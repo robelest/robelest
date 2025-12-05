@@ -17,18 +17,18 @@
 	// Track hover state for each sphere
 	let hoveredSphere = $state<string | null>(null);
 
-	// Tilt state with easing - FAST response
+	// Tilt state with easing
 	let tiltX = $state(0);
 	let tiltY = $state(0);
 
-	// Auto-rotation state
+	// Slow auto-rotation
 	let rotationZ = $state(0);
 
-	// Very high easing = instant, responsive feel
+	// Smooth easing for responsive feel
 	const EASING = 0.35;
-	const ROTATION_SPEED = 0.003; // Slow, elegant rotation
+	const ROTATION_SPEED = 0.0018; // Slow, subtle rotation
 
-	// Animation loop for smooth tilt and auto-rotation
+	// Animation loop for smooth tilt and rotation
 	useTask(() => {
 		tiltX += (targetTiltX - tiltX) * EASING;
 		tiltY += (targetTiltY - tiltY) * EASING;
