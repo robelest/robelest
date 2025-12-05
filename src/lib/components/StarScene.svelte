@@ -39,12 +39,12 @@
 	const BLUE = '#7aa2f7';       // Primary accent
 	const RED = '#f7768e';        // Hover color - high contrast
 
-	// Create thick frame geometry using ExtrudeGeometry
+	// Create hollow frame geometry (picture frame shape) as wireframe
 	const outerSize = 1;
 	const innerSize = 0.85;
 	const depth = 0.15;
 
-	// Outer square shape
+	// Create shape with hole for hollow frame
 	const shape = new THREE.Shape();
 	shape.moveTo(-outerSize, -outerSize);
 	shape.lineTo(outerSize, -outerSize);
@@ -52,7 +52,6 @@
 	shape.lineTo(-outerSize, outerSize);
 	shape.closePath();
 
-	// Inner hole (creates hollow center)
 	const hole = new THREE.Path();
 	hole.moveTo(-innerSize, -innerSize);
 	hole.lineTo(innerSize, -innerSize);
@@ -61,15 +60,17 @@
 	hole.closePath();
 	shape.holes.push(hole);
 
-	// Extrude for 3D depth
+	// Extrude to give depth
 	const frameGeometry = new THREE.ExtrudeGeometry(shape, {
 		depth: depth,
 		bevelEnabled: false
 	});
 	frameGeometry.translate(0, 0, -depth / 2);
 
-	// Sphere positions at CORNERS of the non-rotated square (the actual star points)
-	// Offset slightly inward to center spheres on the frame corner
+	// Create wireframe edges from the hollow frame
+	const edgesGeometry = new THREE.EdgesGeometry(frameGeometry);
+
+	// Corner positions for clickable squares
 	const cornerOffset = outerSize - 0.08;
 	const spherePositions = [
 		{ pos: [cornerOffset, cornerOffset, 0] as [number, number, number], sigil: 'Monomania' },     // Top-right
@@ -90,15 +91,15 @@
 
 <!-- Group for mouse tilt -->
 <T.Group rotation.x={tiltX} rotation.y={tiltY} rotation.z={rotationZ}>
-	<!-- Frame 1: Standard orientation -->
-	<T.Mesh geometry={frameGeometry}>
-		<T.MeshBasicMaterial color={BLUE} />
-	</T.Mesh>
+	<!-- Frame 1: Standard orientation (wireframe) -->
+	<T.LineSegments geometry={edgesGeometry}>
+		<T.LineBasicMaterial color={BLUE} />
+	</T.LineSegments>
 
-	<!-- Frame 2: Rotated 45° -->
-	<T.Mesh geometry={frameGeometry} rotation.z={Math.PI / 4}>
-		<T.MeshBasicMaterial color={BLUE} />
-	</T.Mesh>
+	<!-- Frame 2: Rotated 45° (wireframe) -->
+	<T.LineSegments geometry={edgesGeometry} rotation.z={Math.PI / 4}>
+		<T.LineBasicMaterial color={BLUE} />
+	</T.LineSegments>
 
 	<!-- Clickable corner boxes aligned with the non-rotated frame -->
 	{#each spherePositions as { pos, sigil }}
