@@ -1,3 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#ea9d34" stroke="#ea9d34" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm4 16h12v2H6v-2z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- 8-pointed star: two overlapping squares -->
+  <rect x="6" y="6" width="20" height="20" fill="none" stroke="#ea9d34" stroke-width="2.5"/>
+  <rect x="6" y="6" width="20" height="20" fill="none" stroke="#ea9d34" stroke-width="2.5" transform="rotate(45 16 16)"/>
 </svg>

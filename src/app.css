@@ -1,85 +1,213 @@
-@import 'tailwindcss';
+@import "tailwindcss";
+@import "tw-animate-css";
 
-/* Define custom Rose Pine theme */
-@theme {
-  /* Rose Pine Colors */
-  --color-rose-pine-base: #faf4ed;
-  --color-rose-pine-text: #575279;
-  --color-rose-pine-muted: #9893a5;
-  --color-rose-pine-iris: #907aa9;
-  --color-rose-pine-rose: #d7827e;
-  --color-rose-pine-gold: #ea9d34;
-  --color-rose-pine-surface: #f2e9e1;
+@custom-variant dark (&:is(.dark *));
 
-  /* Font families */
+/* ══════════════════════════════════════════════════════════════════════════════
+   ROSE PINE THEME - Dawn (Light) & Main (Dark)
+   A refined, warm palette inspired by Ethiopian heritage
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Rose Pine Dawn (Light) - Core Palette */
+  --rp-base: #faf4ed;
+  --rp-surface: #fffaf3;
+  --rp-overlay: #f2e9e1;
+  --rp-muted: #9893a5;
+  --rp-subtle: #797593;
+  --rp-text: #575279;
+  --rp-love: #b4637a;
+  --rp-gold: #ea9d34;
+  --rp-rose: #d7827e;
+  --rp-pine: #286983;
+  --rp-foam: #56949f;
+  --rp-iris: #907aa9;
+
+  /* shadcn compatibility - mapped to Rose Pine */
+  --radius: 0.5rem;
+  --background: #faf4ed;
+  --foreground: #575279;
+  --card: #fffaf3;
+  --card-foreground: #575279;
+  --popover: #fffaf3;
+  --popover-foreground: #575279;
+  --primary: #ea9d34;
+  --primary-foreground: #faf4ed;
+  --secondary: #f2e9e1;
+  --secondary-foreground: #575279;
+  --muted: #f2e9e1;
+  --muted-foreground: #9893a5;
+  --accent: #f2e9e1;
+  --accent-foreground: #575279;
+  --destructive: #b4637a;
+  --border: #f2e9e1;
+  --input: #f2e9e1;
+  --ring: #ea9d34;
+}
+
+.dark {
+  /* Rose Pine Main (Dark) - Core Palette */
+  --rp-base: #191724;
+  --rp-surface: #1f1d2e;
+  --rp-overlay: #26233a;
+  --rp-muted: #6e6a86;
+  --rp-subtle: #908caa;
+  --rp-text: #e0def4;
+  --rp-love: #eb6f92;
+  --rp-gold: #f6c177;
+  --rp-rose: #ebbcba;
+  --rp-pine: #31748f;
+  --rp-foam: #9ccfd8;
+  --rp-iris: #c4a7e7;
+
+  /* shadcn compatibility - mapped to Rose Pine Dark */
+  --background: #191724;
+  --foreground: #e0def4;
+  --card: #1f1d2e;
+  --card-foreground: #e0def4;
+  --popover: #1f1d2e;
+  --popover-foreground: #e0def4;
+  --primary: #f6c177;
+  --primary-foreground: #191724;
+  --secondary: #26233a;
+  --secondary-foreground: #e0def4;
+  --muted: #26233a;
+  --muted-foreground: #6e6a86;
+  --accent: #26233a;
+  --accent-foreground: #e0def4;
+  --destructive: #eb6f92;
+  --border: #26233a;
+  --input: #26233a;
+  --ring: #f6c177;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   TAILWIND THEME INTEGRATION
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+@theme inline {
+  /* Radii */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* shadcn colors */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Rose Pine direct access colors */
+  --color-rose-pine-base: var(--rp-base);
+  --color-rose-pine-surface: var(--rp-surface);
+  --color-rose-pine-overlay: var(--rp-overlay);
+  --color-rose-pine-muted: var(--rp-muted);
+  --color-rose-pine-subtle: var(--rp-subtle);
+  --color-rose-pine-text: var(--rp-text);
+  --color-rose-pine-love: var(--rp-love);
+  --color-rose-pine-gold: var(--rp-gold);
+  --color-rose-pine-rose: var(--rp-rose);
+  --color-rose-pine-pine: var(--rp-pine);
+  --color-rose-pine-foam: var(--rp-foam);
+  --color-rose-pine-iris: var(--rp-iris);
+
+  /* Typography */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Helvetica Neue", Arial, sans-serif;
   --font-serif: Georgia, "Times New Roman", serif;
   --font-mono: Monaco, Consolas, "Courier New", monospace;
 }
 
-/* Global styles */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+/* ══════════════════════════════════════════════════════════════════════════════
+   BASE STYLES
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-rose-pine-base text-rose-pine-text;
+    font-family: var(--font-sans);
+    font-weight: 400;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-serif);
+    font-weight: 300;
+    line-height: 1.2;
+  }
 }
 
-html {
-  scroll-behavior: smooth;
-}
+/* ══════════════════════════════════════════════════════════════════════════════
+   CUSTOM SCROLLBAR
+   ══════════════════════════════════════════════════════════════════════════════ */
 
-body {
-  margin: 0;
-  padding: 0;
-  font-family: var(--font-sans);
-  font-weight: 400;
-  line-height: 1.6;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-serif);
-  font-weight: 300;
-  line-height: 1.2;
-}
-
-/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #faf4ed;
+  background: var(--rp-base);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #9893a5;
+  background: var(--rp-muted);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #d7827e;
+  background: var(--rp-rose);
 }
 
-/* Selection */
+/* ══════════════════════════════════════════════════════════════════════════════
+   SELECTION & FOCUS
+   ══════════════════════════════════════════════════════════════════════════════ */
+
 ::selection {
-  background: #d7827e;
-  color: #faf4ed;
+  background: var(--rp-rose);
+  color: var(--rp-base);
 }
 
-/* Focus styles */
 :focus-visible {
-  outline: 2px solid #d7827e;
+  outline: 2px solid var(--rp-gold);
   outline-offset: 2px;
 }
 
-/* Smooth transitions */
+/* ══════════════════════════════════════════════════════════════════════════════
+   SMOOTH TRANSITIONS
+   ══════════════════════════════════════════════════════════════════════════════ */
+
 * {
   transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
 }
 
-/* Screen reader only utility (visually hidden but accessible) */
+/* ══════════════════════════════════════════════════════════════════════════════
+   ACCESSIBILITY
+   ══════════════════════════════════════════════════════════════════════════════ */
+
 .sr-only {
   position: absolute;
   width: 1px;
