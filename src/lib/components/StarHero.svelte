@@ -3,10 +3,9 @@
 
 	interface Props {
 		onSphereClick?: (sigil: string) => void;
-		isDark?: boolean;
 	}
 
-	let { onSphereClick, isDark = false }: Props = $props();
+	let { onSphereClick }: Props = $props();
 
 	// Mouse position for tilt effect
 	let targetTiltX = $state(0);
@@ -34,13 +33,13 @@
 <div
 	class="three-container"
 	role="img"
-	aria-label="Interactive golden 8-pointed star with clickable spheres"
+	aria-label="Interactive 8-pointed star with clickable corners"
 	onmousemove={handleMouseMove}
 	onmouseleave={handleMouseLeave}
 >
 	<Canvas>
 		{#await import('./StarScene.svelte') then { default: StarScene }}
-			<StarScene {targetTiltX} {targetTiltY} {onSphereClick} {isDark} />
+			<StarScene {targetTiltX} {targetTiltY} {onSphereClick} />
 		{/await}
 	</Canvas>
 </div>

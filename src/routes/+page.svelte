@@ -13,9 +13,6 @@
 	// Convex queries
 	const postsQuery = useQuery(api.posts.list, { publishedOnly: true });
 
-	// Theme state
-	let isDark = $state(false);
-
 	// Essay Dialog state
 	let selectedSigil = $state<string | null>(null);
 	let dialogOpen = $state(false);
@@ -100,34 +97,11 @@ The goal is not to automate humanity but to augment it—to extend our reach wit
 	});
 
 	onMount(() => {
-		// Theme initialization
-		const saved = localStorage.getItem('theme');
-		if (saved) {
-			isDark = saved === 'dark';
-		} else {
-			isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-		}
-		updateTheme();
-
 		// Time initialization and live updates
 		updateTime();
 		const interval = setInterval(updateTime, 1000);
 		return () => clearInterval(interval);
 	});
-
-	function toggleTheme() {
-		isDark = !isDark;
-		localStorage.setItem('theme', isDark ? 'dark' : 'light');
-		updateTheme();
-	}
-
-	function updateTheme() {
-		if (isDark) {
-			document.documentElement.classList.add('dark');
-		} else {
-			document.documentElement.classList.remove('dark');
-		}
-	}
 
 	function handleSphereClick(sigil: string) {
 		selectedSigil = sigil;
@@ -189,22 +163,16 @@ The goal is not to automate humanity but to augment it—to extend our reach wit
 <!-- Main centered container -->
 <main class="h-screen flex items-center justify-center">
 	<div class="scale-110 lg:scale-[1.35]">
-		<StarHero onSphereClick={handleSphereClick} {isDark} />
+		<StarHero onSphereClick={handleSphereClick} />
 	</div>
 </main>
 
 <!-- Fixed Footer -->
 <footer class="fixed bottom-0 left-0 right-0 z-50 px-6 lg:px-12 py-4 lg:py-6 flex justify-between items-center">
 	<!-- Left: Location & Time -->
-	<div class="flex items-center gap-2 italic text-base sm:text-lg lg:text-xl font-light tracking-tight text-rose-pine-muted" style="font-family: var(--font-serif);">
+	<div class="flex items-center gap-2 italic text-base sm:text-lg lg:text-xl font-light tracking-tight text-tn-muted" style="font-family: var(--font-serif);">
 		<span>Manhattan</span>
-		<button
-			onclick={toggleTheme}
-			class="text-rose-pine-gold hover:scale-110 active:scale-95 transition-transform cursor-pointer"
-			aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-		>
-			<MapPin class="w-4 h-4 sm:w-5 sm:h-5" />
-		</button>
+		<MapPin class="w-4 h-4 sm:w-5 sm:h-5 text-tn-teal" />
 		<span>{currentTime}</span>
 	</div>
 
@@ -212,7 +180,7 @@ The goal is not to automate humanity but to augment it—to extend our reach wit
 	<div class="flex items-center gap-2 italic text-base sm:text-lg lg:text-xl font-light tracking-tight" style="font-family: var(--font-serif);">
 		<button
 			onclick={openJournal}
-			class="text-rose-pine-muted hover:text-rose-pine-gold transition-colors cursor-pointer"
+			class="text-tn-muted hover:text-tn-red transition-colors cursor-pointer"
 		>
 			Robel Estifanos
 		</button>
@@ -220,7 +188,7 @@ The goal is not to automate humanity but to augment it—to extend our reach wit
 			href="https://trestle.inc"
 			target="_blank"
 			rel="noopener noreferrer"
-			class="text-rose-pine-muted hover:text-rose-pine-gold transition-colors"
+			class="text-tn-muted hover:text-tn-red transition-colors"
 		>
 			@ Trestle
 		</a>
@@ -229,282 +197,99 @@ The goal is not to automate humanity but to augment it—to extend our reach wit
 
 <!-- Essay Dialog -->
 <Dialog.Root open={dialogOpen} onOpenChange={handleDialogChange}>
-	<Dialog.Content class="essay-dialog">
-		<!-- Content -->
-		<div class="essay-content">
-			{#if selectedSigil && essays[selectedSigil]}
-				<Dialog.Header class="mb-8">
-					<Dialog.Title class="essay-title">
-						{selectedSigil}
-					</Dialog.Title>
-					<p class="essay-subtitle">
-						{essays[selectedSigil].subtitle}
-					</p>
-				</Dialog.Header>
+	<Dialog.Content>
+		{#if selectedSigil && essays[selectedSigil]}
+			<Dialog.Header class="mb-8">
+				<Dialog.Title>{selectedSigil}</Dialog.Title>
+				<Dialog.Description>{essays[selectedSigil].subtitle}</Dialog.Description>
+			</Dialog.Header>
 
-				<div class="essay-body">
-					{essays[selectedSigil].content}
-				</div>
-
-				<!-- Decorative line -->
-				<div class="mt-12 flex justify-center">
-					<div class="w-16 h-px bg-rose-pine-gold/40"></div>
-				</div>
-			{/if}
-		</div>
+			<div class="essay-body">
+				{essays[selectedSigil].content}
+			</div>
+		{/if}
 	</Dialog.Content>
 </Dialog.Root>
 
 <!-- Journal Dialog -->
 <Dialog.Root open={journalOpen} onOpenChange={handleJournalDialogChange}>
-	<Dialog.Content class="journal-dialog">
-		<div class="journal-content">
-			{#if selectedSlug && selectedPostQuery.data}
-				<!-- Article View -->
-				<button
-					onclick={handleBackToList}
-					class="flex items-center gap-2 text-rose-pine-muted hover:text-rose-pine-text transition-colors mb-8"
-				>
-					<ArrowLeft class="w-4 h-4" />
-					<span class="text-sm">Back to Journal</span>
-				</button>
+	<Dialog.Content>
+		{#if selectedSlug && selectedPostQuery.data}
+			<!-- Article View -->
+			<button
+				onclick={handleBackToList}
+				class="flex items-center gap-2 text-tn-muted hover:text-tn-text transition-colors mb-8"
+			>
+				<ArrowLeft class="w-4 h-4" />
+				<span class="text-sm">Back to Journal</span>
+			</button>
 
-				<Dialog.Header class="mb-8">
-					<Dialog.Title class="journal-title">
-						{selectedPostQuery.data.title}
-					</Dialog.Title>
-					<p class="journal-date">
-						{formatDate(selectedPostQuery.data.publishDate)}
-					</p>
-				</Dialog.Header>
+			<Dialog.Header class="mb-8">
+				<Dialog.Title>{selectedPostQuery.data.title}</Dialog.Title>
+				<p class="text-tn-muted text-sm">{formatDate(selectedPostQuery.data.publishDate)}</p>
+			</Dialog.Header>
 
-				<div class="journal-body prose">
-					{@html selectedPostQuery.data.content}
-				</div>
-			{:else if selectedSlug && selectedPostQuery.isLoading}
-				<!-- Loading article -->
+			<div class="journal-body prose">
+				{@html selectedPostQuery.data.content}
+			</div>
+		{:else if selectedSlug && selectedPostQuery.isLoading}
+			<div class="flex justify-center py-12">
+				<span class="text-tn-muted">Loading...</span>
+			</div>
+		{:else}
+			<!-- List View -->
+			<Dialog.Header class="mb-8">
+				<Dialog.Title>Journal</Dialog.Title>
+				<Dialog.Description>Thoughts on software and building better systems.</Dialog.Description>
+			</Dialog.Header>
+
+			{#if postsQuery.isLoading}
 				<div class="flex justify-center py-12">
-					<span class="text-rose-pine-muted">Loading...</span>
+					<span class="text-tn-muted">Loading...</span>
+				</div>
+			{:else if !postsQuery.data || postsQuery.data.length === 0}
+				<div class="flex justify-center items-center py-12">
+					<img src={emptySvg} alt="No posts yet" class="w-48 h-48 opacity-60" />
 				</div>
 			{:else}
-				<!-- List View -->
-				<Dialog.Header class="mb-8">
-					<Dialog.Title class="journal-title">
-						Journal
-					</Dialog.Title>
-					<p class="journal-subtitle">
-						Thoughts on software and building better systems.
-					</p>
-				</Dialog.Header>
-
-				{#if postsQuery.isLoading}
-					<div class="flex justify-center py-12">
-						<span class="text-rose-pine-muted">Loading...</span>
-					</div>
-				{:else if !postsQuery.data || postsQuery.data.length === 0}
-					<div class="flex justify-center items-center py-12">
-						<img src={emptySvg} alt="No posts yet" class="w-48 h-48 opacity-60" />
-					</div>
-				{:else}
-					<nav aria-label="Journal entries">
-						<ul class="space-y-6">
-							{#each postsQuery.data as post}
-								<li>
-									<button
-										onclick={() => handlePostClick(post.slug)}
-										class="block w-full text-left group hover:opacity-70 transition-opacity"
-									>
-										<div class="flex items-center gap-3 text-rose-pine-muted text-sm mb-1">
-											<time datetime={post.publishDate}>{formatDate(post.publishDate)}</time>
-											<span aria-hidden="true">•</span>
-											<span class="text-rose-pine-text group-hover:text-rose-pine-gold transition-colors font-medium">{post.title}</span>
-										</div>
-										{#if post.description}
-											<p class="text-rose-pine-muted text-sm">{post.description}</p>
-										{/if}
-									</button>
-								</li>
-							{/each}
-						</ul>
-					</nav>
-				{/if}
+				<nav aria-label="Journal entries">
+					<ul class="space-y-6">
+						{#each postsQuery.data as post}
+							<li>
+								<button
+									onclick={() => handlePostClick(post.slug)}
+									class="block w-full text-left group hover:opacity-70 transition-opacity"
+								>
+									<div class="flex items-center gap-3 text-tn-muted text-sm mb-1">
+										<time datetime={post.publishDate}>{formatDate(post.publishDate)}</time>
+										<span aria-hidden="true">•</span>
+										<span class="text-tn-text group-hover:text-tn-blue transition-colors font-medium">{post.title}</span>
+									</div>
+									{#if post.description}
+										<p class="text-tn-muted text-sm">{post.description}</p>
+									{/if}
+								</button>
+							</li>
+						{/each}
+					</ul>
+				</nav>
 			{/if}
-
-			<!-- Decorative line -->
-			<div class="mt-12 flex justify-center">
-				<div class="w-16 h-px bg-rose-pine-gold/40"></div>
-			</div>
-		</div>
+		{/if}
 	</Dialog.Content>
 </Dialog.Root>
 
 <style>
-	:global(.essay-dialog) {
-		width: 85vw !important;
-		max-width: 85vw !important;
-		height: 85vh !important;
-		max-height: 85vh !important;
-		background: var(--rp-surface) !important;
-		border: 1px solid var(--rp-overlay) !important;
-		border-radius: 0 !important;
-		padding: 0 !important;
-		overflow: hidden !important;
-	}
-
-	:global(.essay-dialog::before) {
-		content: '';
-		position: absolute;
-		inset: 0;
-		background: linear-gradient(
-			135deg,
-			transparent 0%,
-			var(--rp-gold) 0%,
-			var(--rp-gold) 2px,
-			transparent 2px
-		);
-		background-size: 100% 100%;
-		pointer-events: none;
-	}
-
-	.essay-content {
-		height: 100%;
-		overflow-y: auto;
-		padding: 2rem 3rem;
-		scrollbar-width: thin;
-		scrollbar-color: var(--rp-muted) transparent;
-	}
-
-	.essay-content::-webkit-scrollbar {
-		width: 4px;
-	}
-
-	.essay-content::-webkit-scrollbar-track {
-		background: transparent;
-	}
-
-	.essay-content::-webkit-scrollbar-thumb {
-		background: var(--rp-muted);
-		border-radius: 2px;
-	}
-
-	:global(.essay-title) {
-		font-family: var(--font-serif) !important;
-		font-size: clamp(1.5rem, 3vw, 2rem) !important;
-		font-weight: 300 !important;
-		color: var(--rp-gold) !important;
-		letter-spacing: -0.02em;
-		line-height: 1.2 !important;
-		margin-bottom: 0.5rem !important;
-	}
-
-	.essay-subtitle {
-		font-family: var(--font-serif);
-		font-size: clamp(0.875rem, 1.5vw, 1rem);
-		color: var(--rp-muted);
-		font-style: italic;
-		font-weight: 300;
-	}
-
-	.essay-body {
-		font-family: var(--font-serif);
-		font-size: clamp(1.1rem, 1.5vw, 1.35rem);
-		line-height: 1.9;
-		color: var(--rp-text);
-		white-space: pre-line;
-		max-width: 65ch;
-	}
-
-	/* Responsive adjustments */
-	@media (max-width: 768px) {
-		.essay-content {
-			padding: 1.5rem 1.5rem;
-		}
-	}
-
-	/* Journal Dialog Styles */
-	:global(.journal-dialog) {
-		width: 85vw !important;
-		max-width: 85vw !important;
-		height: 85vh !important;
-		max-height: 85vh !important;
-		background: var(--rp-surface) !important;
-		border: 1px solid var(--rp-overlay) !important;
-		border-radius: 0 !important;
-		padding: 0 !important;
-		overflow: hidden !important;
-	}
-
-	:global(.journal-dialog::before) {
-		content: '';
-		position: absolute;
-		inset: 0;
-		background: linear-gradient(
-			135deg,
-			transparent 0%,
-			var(--rp-gold) 0%,
-			var(--rp-gold) 2px,
-			transparent 2px
-		);
-		background-size: 100% 100%;
-		pointer-events: none;
-	}
-
-	.journal-content {
-		height: 100%;
-		overflow-y: auto;
-		padding: 2rem 3rem;
-		scrollbar-width: thin;
-		scrollbar-color: var(--rp-muted) transparent;
-	}
-
-	.journal-content::-webkit-scrollbar {
-		width: 4px;
-	}
-
-	.journal-content::-webkit-scrollbar-track {
-		background: transparent;
-	}
-
-	.journal-content::-webkit-scrollbar-thumb {
-		background: var(--rp-muted);
-		border-radius: 2px;
-	}
-
-	:global(.journal-title) {
-		font-family: var(--font-serif) !important;
-		font-size: clamp(1.5rem, 3vw, 2rem) !important;
-		font-weight: 300 !important;
-		color: var(--rp-gold) !important;
-		letter-spacing: -0.02em;
-		line-height: 1.2 !important;
-		margin-bottom: 0.5rem !important;
-	}
-
-	.journal-subtitle {
-		font-family: var(--font-serif);
-		font-size: clamp(0.875rem, 1.5vw, 1rem);
-		color: var(--rp-muted);
-		font-style: italic;
-		font-weight: 300;
-	}
-
-	.journal-date {
-		font-family: var(--font-sans);
-		font-size: 0.875rem;
-		color: var(--rp-muted);
-	}
-
+	/* Content body styles */
+	.essay-body,
 	.journal-body {
 		font-family: var(--font-serif);
 		font-size: clamp(1.1rem, 1.5vw, 1.35rem);
 		line-height: 1.9;
-		color: var(--rp-text);
+		color: var(--tn-text);
 		max-width: 65ch;
 	}
 
-	@media (max-width: 768px) {
-		.journal-content {
-			padding: 1.5rem 1.5rem;
-		}
+	.essay-body {
+		white-space: pre-line;
 	}
 </style>

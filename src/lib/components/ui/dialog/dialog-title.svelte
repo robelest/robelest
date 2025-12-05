@@ -12,6 +12,18 @@
 <DialogPrimitive.Title
 	bind:ref
 	data-slot="dialog-title"
-	class={cn("text-lg font-semibold leading-none", className)}
+	class={cn("dialog-title", className)}
 	{...restProps}
 />
+
+<style>
+	:global(.dialog-title) {
+		font-family: var(--font-serif);
+		font-size: clamp(1.5rem, 3vw, 2rem);
+		font-weight: 300;
+		color: var(--tn-teal);
+		letter-spacing: -0.02em;
+		line-height: 1.2;
+		margin-bottom: 0.5rem;
+	}
+</style>

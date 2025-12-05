@@ -10,10 +10,9 @@
 		targetTiltX?: number;
 		targetTiltY?: number;
 		onSphereClick?: (sigil: string) => void;
-		isDark?: boolean;
 	}
 
-	let { targetTiltX = 0, targetTiltY = 0, onSphereClick, isDark = false }: Props = $props();
+	let { targetTiltX = 0, targetTiltY = 0, onSphereClick }: Props = $props();
 
 	// Track hover state for each sphere
 	let hoveredSphere = $state<string | null>(null);
@@ -36,17 +35,9 @@
 		rotationZ += ROTATION_SPEED;
 	});
 
-	// Colors from Rose Pine theme
-	const GOLD = '#ea9d34';
-	// Hover accent colors - using "love" for stronger contrast
-	const LOVE_LIGHT = '#b4637a';  // Darker, more saturated pink
-	const LOVE_DARK = '#eb6f92';   // Vibrant pink for dark mode
-
-	// Get hover color based on theme
-	$effect(() => {
-		// This will reactively update when isDark changes
-	});
-	const getHoverColor = () => isDark ? LOVE_DARK : LOVE_LIGHT;
+	// Tokyo Night colors
+	const BLUE = '#7aa2f7';       // Primary accent
+	const RED = '#f7768e';        // Hover color - high contrast
 
 	// Create thick frame geometry using ExtrudeGeometry
 	const outerSize = 1;
@@ -101,12 +92,12 @@
 <T.Group rotation.x={tiltX} rotation.y={tiltY} rotation.z={rotationZ}>
 	<!-- Frame 1: Standard orientation -->
 	<T.Mesh geometry={frameGeometry}>
-		<T.MeshBasicMaterial color={GOLD} />
+		<T.MeshBasicMaterial color={BLUE} />
 	</T.Mesh>
 
 	<!-- Frame 2: Rotated 45° -->
 	<T.Mesh geometry={frameGeometry} rotation.z={Math.PI / 4}>
-		<T.MeshBasicMaterial color={GOLD} />
+		<T.MeshBasicMaterial color={BLUE} />
 	</T.Mesh>
 
 	<!-- Clickable corner boxes aligned with the non-rotated frame -->
@@ -118,7 +109,7 @@
 			onpointerenter={() => hoveredSphere = sigil}
 			onpointerleave={() => hoveredSphere = null}
 		>
-			<T.MeshBasicMaterial color={hoveredSphere === sigil ? getHoverColor() : GOLD} />
+			<T.MeshBasicMaterial color={hoveredSphere === sigil ? RED : BLUE} />
 		</T.Mesh>
 	{/each}
 </T.Group>

@@ -16,7 +16,7 @@
 			<nav aria-label="Back navigation">
 				<a
 					href={backLink.href}
-					class="inline-flex items-center gap-2 text-rose-pine-muted hover:text-rose-pine-text transition-colors font-mono text-sm"
+					class="inline-flex items-center gap-2 text-tn-muted hover:text-tn-text transition-colors font-mono text-sm"
 				>
 					{backLink.text}
 				</a>

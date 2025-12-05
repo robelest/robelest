@@ -14,7 +14,7 @@
 	{#if rightLink}
 		<a
 			href={rightLink.href}
-			class="text-xs sm:text-sm text-rose-pine-muted font-mono hover:text-rose-pine-text transition-colors"
+			class="text-xs sm:text-sm text-tn-muted font-mono hover:text-tn-text transition-colors"
 		>
 			{rightLink.text}
 		</a>
