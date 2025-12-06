@@ -9,6 +9,10 @@
 	import { page } from '$app/stores';
 	import { goto, replaceState } from '$app/navigation';
 	import emptySvg from '$lib/assets/empty.svg';
+	import { PUBLIC_SHOW_VALUE_SQUARES } from '$env/static/public';
+
+	// Feature flag for value squares (default: hidden)
+	const showValueSquares = PUBLIC_SHOW_VALUE_SQUARES === 'true';
 
 	// Convex queries
 	const postsQuery = useQuery(api.posts.list, { publishedOnly: true });
@@ -162,8 +166,8 @@ The goal is not to automate humanity but to augment it—to extend our reach wit
 
 <!-- Main centered container -->
 <main class="h-screen flex items-center justify-center">
-	<div class="scale-110 lg:scale-[1.35]">
-		<StarHero onSphereClick={handleSphereClick} />
+	<div class="scale-[0.55] lg:scale-[0.675]">
+		<StarHero onSphereClick={handleSphereClick} {showValueSquares} />
 	</div>
 </main>
 

@@ -7,32 +7,30 @@
 	interactivity();
 
 	interface Props {
-		targetTiltX?: number;
-		targetTiltY?: number;
+		deltaX?: number;
+		deltaY?: number;
 		onSphereClick?: (sigil: string) => void;
+		showValueSquares?: boolean;
 	}
 
-	let { targetTiltX = 0, targetTiltY = 0, onSphereClick }: Props = $props();
+	let { deltaX = 0, deltaY = 0, onSphereClick, showValueSquares = false }: Props = $props();
 
 	// Track hover state for each sphere
 	let hoveredSphere = $state<string | null>(null);
 
-	// Tilt state with easing
-	let tiltX = $state(0);
-	let tiltY = $state(0);
+	// Auto-rotation on all axes
+	let autoRotationX = $state(0);
+	let autoRotationY = $state(0);
+	let autoRotationZ = $state(0);
 
-	// Slow auto-rotation
-	let rotationZ = $state(0);
+	// Slow, subtle auto-rotation speed
+	const ROTATION_SPEED = 0.0018;
 
-	// Smooth easing for responsive feel
-	const EASING = 0.35;
-	const ROTATION_SPEED = 0.0018; // Slow, subtle rotation
-
-	// Animation loop for smooth tilt and rotation
+	// Animation loop for auto-rotation
 	useTask(() => {
-		tiltX += (targetTiltX - tiltX) * EASING;
-		tiltY += (targetTiltY - tiltY) * EASING;
-		rotationZ += ROTATION_SPEED;
+		autoRotationX += ROTATION_SPEED;
+		autoRotationY += ROTATION_SPEED;
+		autoRotationZ += ROTATION_SPEED;
 	});
 
 	// Tokyo Night colors
@@ -89,8 +87,8 @@
 <!-- Camera -->
 <T.PerspectiveCamera makeDefault position={[0, 0, 5]} fov={45} />
 
-<!-- Group for mouse tilt -->
-<T.Group rotation.x={tiltX} rotation.y={tiltY} rotation.z={rotationZ}>
+<!-- Group for rotation (auto + mouse-driven) -->
+<T.Group rotation.x={autoRotationX + deltaX} rotation.y={autoRotationY + deltaY} rotation.z={autoRotationZ}>
 	<!-- Frame 1: Standard orientation (wireframe) -->
 	<T.LineSegments geometry={edgesGeometry}>
 		<T.LineBasicMaterial color={BLUE} />
@@ -102,15 +100,17 @@
 	</T.LineSegments>
 
 	<!-- Clickable corner boxes aligned with the non-rotated frame -->
-	{#each spherePositions as { pos, sigil }}
-		<T.Mesh
-			geometry={squareGeometry}
-			position={pos}
-			onclick={() => onSphereClick?.(sigil)}
-			onpointerenter={() => hoveredSphere = sigil}
-			onpointerleave={() => hoveredSphere = null}
-		>
-			<T.MeshBasicMaterial color={hoveredSphere === sigil ? RED : BLUE} />
-		</T.Mesh>
-	{/each}
+	{#if showValueSquares}
+		{#each spherePositions as { pos, sigil }}
+			<T.Mesh
+				geometry={squareGeometry}
+				position={pos}
+				onclick={() => onSphereClick?.(sigil)}
+				onpointerenter={() => hoveredSphere = sigil}
+				onpointerleave={() => hoveredSphere = null}
+			>
+				<T.MeshBasicMaterial color={hoveredSphere === sigil ? RED : BLUE} />
+			</T.Mesh>
+		{/each}
+	{/if}
 </T.Group>

@@ -3,30 +3,41 @@
 
 	interface Props {
 		onSphereClick?: (sigil: string) => void;
+		showValueSquares?: boolean;
 	}
 
-	let { onSphereClick }: Props = $props();
+	let { onSphereClick, showValueSquares = false }: Props = $props();
 
-	// Pointer position for tilt effect (works for mouse and touch)
-	let targetTiltX = $state(0);
-	let targetTiltY = $state(0);
+	// Track last pointer position for delta calculation
+	let lastPointerX = $state<number | null>(null);
+	let lastPointerY = $state<number | null>(null);
 
-	// Subtle tilt for clean feel
-	const MAX_TILT = 0.4;
+	// Accumulated rotation deltas to pass to StarScene
+	let deltaX = $state(0);
+	let deltaY = $state(0);
+
+	// Sensitivity for pointer movement
+	const SENSITIVITY = 0.01;
 
 	function handlePointerMove(event: PointerEvent) {
-		const target = event.currentTarget as HTMLElement;
-		const rect = target.getBoundingClientRect();
-		const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-		const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+		if (lastPointerX !== null && lastPointerY !== null) {
+			// Calculate delta from last position
+			const dx = event.clientX - lastPointerX;
+			const dy = event.clientY - lastPointerY;
 
-		targetTiltX = y * MAX_TILT;
-		targetTiltY = x * MAX_TILT;
+			// Accumulate rotation (Y movement affects X rotation, X movement affects Y rotation)
+			deltaX += dy * SENSITIVITY;
+			deltaY += dx * SENSITIVITY;
+		}
+
+		lastPointerX = event.clientX;
+		lastPointerY = event.clientY;
 	}
 
 	function handlePointerLeave() {
-		targetTiltX = 0;
-		targetTiltY = 0;
+		// Reset tracking but don't reset deltas - rotation persists
+		lastPointerX = null;
+		lastPointerY = null;
 	}
 </script>
 
@@ -39,7 +50,7 @@
 >
 	<Canvas>
 		{#await import('./StarScene.svelte') then { default: StarScene }}
-			<StarScene {targetTiltX} {targetTiltY} {onSphereClick} />
+			<StarScene {deltaX} {deltaY} {onSphereClick} {showValueSquares} />
 		{/await}
 	</Canvas>
 </div>
