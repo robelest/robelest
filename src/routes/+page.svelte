@@ -9,10 +9,10 @@
 	import { page } from '$app/stores';
 	import { goto, replaceState } from '$app/navigation';
 	import emptySvg from '$lib/assets/empty.svg';
-	import { PUBLIC_SHOW_VALUE_SQUARES } from '$env/static/public';
+	import { env } from '$env/dynamic/public';
 
 	// Feature flag for value squares (default: hidden)
-	const showValueSquares = PUBLIC_SHOW_VALUE_SQUARES === 'true';
+	const showValueSquares = env.PUBLIC_SHOW_VALUE_SQUARES === 'true';
 
 	// Convex queries
 	const postsQuery = useQuery(api.posts.list, { publishedOnly: true });
