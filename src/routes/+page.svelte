@@ -1,299 +1,137 @@
 <script lang="ts">
-	import { ArrowLeft, MapPin } from '@lucide/svelte';
-	import StarHero from '$lib/components/StarHero.svelte';
-	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import { onMount } from 'svelte';
-	import { formatDate } from '$lib/utils/date';
 	import { useQuery } from 'convex-svelte';
 	import { api } from '../../convex/_generated/api';
-	import { page } from '$app/stores';
-	import { goto, replaceState } from '$app/navigation';
-	import emptySvg from '$lib/assets/empty.svg';
-	import { PUBLIC_SHOW_VALUE_SQUARES } from '$env/static/public';
+	import { formatDate } from '$lib/utils/date';
+	import StarHeader from '$lib/components/StarHeader.svelte';
 
-	// Feature flag for value squares (default: hidden)
-	const showValueSquares = PUBLIC_SHOW_VALUE_SQUARES === 'true';
-
-	// Convex queries
 	const postsQuery = useQuery(api.posts.list, { publishedOnly: true });
 
-	// Essay Dialog state
-	let selectedSigil = $state<string | null>(null);
-	let dialogOpen = $state(false);
-
-	// Journal Dialog state
-	let journalOpen = $state(false);
-	let selectedSlug = $state<string | null>(null);
-
-	// Get selected post from Convex query
-	const selectedPostQuery = useQuery(
-		api.posts.getBySlug,
-		() => selectedSlug ? { slug: selectedSlug } : 'skip'
-	);
-
-	// Time state for header (EST)
-	let currentTime = $state('');
-
-	// Essay content for each sigil
-	const essays: Record<string, { subtitle: string; content: string }> = {
-		Monomania: {
-			subtitle: 'The Art of Singular Focus',
-			content: `The singular focus that transforms ordinary effort into extraordinary achievement. It's the obsessive dedication to a craft, an idea, or a mission that separates those who merely participate from those who pioneer.
-
-In a world of endless distractions, monomania is the rare gift of tunnel vision—the ability to see only the path forward while others scatter their attention across a thousand possibilities.
-
-This is not mere discipline. It is the quiet madness of conviction, the willingness to sacrifice breadth for depth, to know one thing completely rather than many things superficially.
-
-The great builders understood this. They did not divide themselves across projects—they became their projects. And in that becoming, they transcended the ordinary limits of human capability.`
-		},
-		Faith: {
-			subtitle: 'Beyond the Visible',
-			content: `Beyond religion, faith is the conviction in something greater than oneself. It's the belief that our work matters, that progress is possible, and that the future can be better than the past.
-
-Faith sustains us through failure, guides us through uncertainty, and connects us to a tradition of those who built before us and those who will build after.
-
-In the darkness of doubt, faith is not the absence of questions—it is the presence of commitment despite them. It is choosing to act when outcomes are uncertain, to build when destruction seems inevitable.
-
-The Ethiopian tradition teaches that faith moves mountains not through magic, but through the accumulated weight of daily choices, each one a small act of belief made manifest.`
-		},
-		Nature: {
-			subtitle: 'Patterns of Growth',
-			content: `The understanding that we are not separate from the world but deeply embedded within it. Technology should amplify natural human connection, not replace it.
-
-Nature reminds us of patience, of seasons, of growth that cannot be rushed. The best systems mimic natural patterns—resilient, adaptive, and beautiful in their simplicity.
-
-A tree does not strain to grow. Water does not struggle to flow downhill. There is a wisdom in following the grain of reality rather than fighting against it.
-
-Software that endures is software that works with human nature, not against it. It is organic architecture—structures that breathe, adapt, and evolve with those who use them.`
-		},
-		Agency: {
-			subtitle: 'The Power to Create Change',
-			content: `The fundamental belief that individuals can shape their circumstances. Agency is both the power and the responsibility to act, to decide, to create change.
-
-Software that amplifies human compassion must first respect human agency—giving people tools, not cages; offering possibilities, not prescriptions.
-
-Every interface is a philosophy made visible. It either expands what humans can do or constrains them. It either trusts their judgment or undermines it.
-
-The goal is not to automate humanity but to augment it—to extend our reach without replacing our grasp, to sharpen our vision without blinding us to what machines cannot see.`
-		}
-	};
-
-	function updateTime() {
-		const now = new Date();
-		currentTime = now.toLocaleTimeString('en-US', {
-			timeZone: 'America/New_York',
-			hour: '2-digit',
-			minute: '2-digit',
-			hour12: false
-		});
-	}
-
-	// Handle URL params for journal
-	$effect(() => {
-		const journalParam = $page.url.searchParams.get('journal');
-		if (journalParam === 'open') {
-			journalOpen = true;
-			selectedSlug = null;
-		} else if (journalParam) {
-			journalOpen = true;
-			selectedSlug = journalParam;
-		}
-	});
-
-	onMount(() => {
-		// Time initialization and live updates
-		updateTime();
-		const interval = setInterval(updateTime, 1000);
-		return () => clearInterval(interval);
-	});
-
-	function handleSphereClick(sigil: string) {
-		selectedSigil = sigil;
-		dialogOpen = true;
-	}
-
-	function handleDialogChange(open: boolean) {
-		dialogOpen = open;
-		if (!open) {
-			selectedSigil = null;
-		}
-	}
-
-	// Journal dialog handlers
-	function handleJournalDialogChange(open: boolean) {
-		journalOpen = open;
-		if (!open) {
-			selectedSlug = null;
-			// Clear URL params when dialog closes
-			goto('/', { replaceState: true });
-		}
-	}
-
-	function handlePostClick(slug: string) {
-		selectedSlug = slug;
-		// Update URL to reflect selected post
-		goto(`/?journal=${slug}`, { replaceState: true });
-	}
-
-	function handleBackToList() {
-		selectedSlug = null;
-		goto('/?journal=open', { replaceState: true });
-	}
-
-	function openJournal() {
-		journalOpen = true;
-		goto('/?journal=open', { replaceState: true });
-	}
+	// Derived state for whether we have posts
+	const hasPosts = $derived(postsQuery.data && postsQuery.data.length > 0);
 </script>
 
 <svelte:head>
-	<title>Robel Estifanos - Founding Engineer</title>
+	<title>Robel Estifanos</title>
 	<meta
 		name="description"
-		content="Monomania. Faith. Nature. Agency. Founding engineer focused on social impact technology."
+		content="Founding engineer building software that amplifies human compassion."
 	/>
-	<meta
-		name="keywords"
-		content="Robel Estifanos, founding engineer, social impact, technology, Ethiopian heritage, Trestle"
-	/>
-	<meta property="og:title" content="Robel Estifanos - Founding Engineer" />
-	<meta property="og:description" content="Monomania. Faith. Nature. Agency." />
+	<meta name="keywords" content="Robel Estifanos, founding engineer, Trestle, software" />
+	<meta property="og:title" content="Robel Estifanos" />
+	<meta property="og:description" content="Founding engineer building software that amplifies human compassion." />
 	<meta property="og:url" content="https://robelestifanos.com" />
 	<meta property="og:type" content="website" />
-	<meta name="twitter:card" content="summary_large_image" />
-	<meta name="twitter:title" content="Robel Estifanos - Founding Engineer" />
+	<meta name="twitter:card" content="summary" />
+	<meta name="twitter:title" content="Robel Estifanos" />
 </svelte:head>
 
-<!-- Main centered container -->
-<main class="h-screen flex items-center justify-center">
-	<div class="scale-[0.55] lg:scale-[0.675]">
-		<StarHero onSphereClick={handleSphereClick} {showValueSquares} />
-	</div>
-</main>
+<div class="h-[100dvh] flex flex-col overflow-hidden">
+	<!-- Header -->
+	<header class="shrink-0 w-full max-w-[640px] mx-auto px-6 pt-12 sm:pt-16 pb-6">
+		<nav class="flex items-center justify-between">
+			<span class="text-xl sm:text-2xl text-th-text" style="font-family: var(--font-display);">
+				Robel Estifanos
+			</span>
+			<StarHeader />
+		</nav>
+	</header>
 
-<!-- Fixed Footer -->
-<footer class="fixed bottom-0 left-0 right-0 z-50 px-6 lg:px-12 py-4 lg:py-6 flex justify-between items-center">
-	<!-- Left: Location & Time -->
-	<div class="flex items-center gap-2 italic text-base sm:text-lg lg:text-xl font-light tracking-tight text-tn-muted" style="font-family: var(--font-serif);">
-		<span>Manhattan</span>
-		<MapPin class="w-4 h-4 sm:w-5 sm:h-5 text-tn-teal" />
-		<span>{currentTime}</span>
-	</div>
+	<!-- Main Content -->
+	<main class="flex-1 min-h-0 flex flex-col w-full max-w-[640px] mx-auto px-6 overflow-hidden">
+		<!-- About Section -->
+		<section class="shrink-0 mb-10 sm:mb-12">
+			<p class="text-lg sm:text-xl leading-relaxed text-th-text mb-3" style="font-family: var(--font-display);">
+				Founding engineer at <a href="https://trestle.inc" target="_blank" rel="noopener noreferrer" class="hover:underline underline-offset-2">Trestle</a>,
+				building software that amplifies human compassion.
+			</p>
+			<p class="text-base leading-relaxed text-th-muted">
+				Based in Manhattan. Interested in craft, clarity, and tools that respect human agency.
+			</p>
+		</section>
 
-	<!-- Right: Identity -->
-	<div class="flex items-center gap-2 italic text-base sm:text-lg lg:text-xl font-light tracking-tight" style="font-family: var(--font-serif);">
-		<button
-			onclick={openJournal}
-			class="text-tn-muted hover:text-tn-red transition-colors cursor-pointer"
-		>
-			Robel Estifanos
-		</button>
-		<a
-			href="https://trestle.inc"
-			target="_blank"
-			rel="noopener noreferrer"
-			class="text-tn-muted hover:text-tn-red transition-colors"
-		>
-			@ Trestle
-		</a>
-	</div>
-</footer>
+		<!-- Elsewhere Section -->
+		<section id="elsewhere" class="shrink-0 mb-10 sm:mb-12">
+			<h2 class="text-sm font-medium text-th-muted uppercase tracking-widest mb-6">
+				Elsewhere
+			</h2>
+			<ul class="flex flex-wrap gap-x-6 gap-y-2 text-th-text">
+				<li>
+					<a
+						href="https://github.com/robelest"
+						target="_blank"
+						rel="noopener noreferrer"
+						class="hover:text-th-accent transition-colors"
+					>
+						GitHub
+					</a>
+				</li>
+				<li>
+					<a
+						href="https://twitter.com/robelestifanos_"
+						target="_blank"
+						rel="noopener noreferrer"
+						class="hover:text-th-accent transition-colors"
+					>
+						Twitter
+					</a>
+				</li>
+				<li>
+					<a
+						href="https://linkedin.com/in/robelest"
+						target="_blank"
+						rel="noopener noreferrer"
+						class="hover:text-th-accent transition-colors"
+					>
+						LinkedIn
+					</a>
+				</li>
+				<li>
+					<a
+						href="mailto:robel@trestle.inc"
+						class="hover:text-th-accent transition-colors"
+					>
+						Email
+					</a>
+				</li>
+			</ul>
+		</section>
 
-<!-- Essay Dialog -->
-<Dialog.Root open={dialogOpen} onOpenChange={handleDialogChange}>
-	<Dialog.Content>
-		{#if selectedSigil && essays[selectedSigil]}
-			<Dialog.Header class="mb-8">
-				<Dialog.Title>{selectedSigil}</Dialog.Title>
-				<Dialog.Description>{essays[selectedSigil].subtitle}</Dialog.Description>
-			</Dialog.Header>
-
-			<div class="essay-body">
-				{essays[selectedSigil].content}
-			</div>
-		{/if}
-	</Dialog.Content>
-</Dialog.Root>
-
-<!-- Journal Dialog -->
-<Dialog.Root open={journalOpen} onOpenChange={handleJournalDialogChange}>
-	<Dialog.Content>
-		{#if selectedSlug && selectedPostQuery.data}
-			<!-- Article View -->
-			<button
-				onclick={handleBackToList}
-				class="flex items-center gap-2 text-tn-muted hover:text-tn-text transition-colors mb-8"
-			>
-				<ArrowLeft class="w-4 h-4" />
-				<span class="text-sm">Back to Journal</span>
-			</button>
-
-			<Dialog.Header class="mb-8">
-				<Dialog.Title>{selectedPostQuery.data.title}</Dialog.Title>
-				<p class="text-tn-muted text-sm">{formatDate(selectedPostQuery.data.publishDate)}</p>
-			</Dialog.Header>
-
-			<div class="journal-body prose">
-				{@html selectedPostQuery.data.content}
-			</div>
-		{:else if selectedSlug && selectedPostQuery.isLoading}
-			<div class="flex justify-center py-12">
-				<span class="text-tn-muted">Loading...</span>
-			</div>
-		{:else}
-			<!-- List View -->
-			<Dialog.Header class="mb-8">
-				<Dialog.Title>Journal</Dialog.Title>
-				<Dialog.Description>Thoughts on software and building better systems.</Dialog.Description>
-			</Dialog.Header>
-
-			{#if postsQuery.isLoading}
-				<div class="flex justify-center py-12">
-					<span class="text-tn-muted">Loading...</span>
-				</div>
-			{:else if !postsQuery.data || postsQuery.data.length === 0}
-				<div class="flex justify-center items-center py-12">
-					<img src={emptySvg} alt="No posts yet" class="w-48 h-48 opacity-60" />
-				</div>
-			{:else}
-				<nav aria-label="Journal entries">
-					<ul class="space-y-6">
+		<!-- Journal Section (only if posts exist) -->
+		{#if hasPosts}
+			<section id="journal" class="flex-1 min-h-0 flex flex-col">
+				<h2 class="shrink-0 text-sm font-medium text-th-muted uppercase tracking-widest mb-6">
+					Journal
+				</h2>
+				<div class="flex-1 min-h-0 overflow-y-auto pr-2 -mr-2">
+					<ul class="space-y-3">
 						{#each postsQuery.data as post}
 							<li>
-								<button
-									onclick={() => handlePostClick(post.slug)}
-									class="block w-full text-left group hover:opacity-70 transition-opacity"
+								<a
+									href="/journal/{post.slug}"
+									class="group flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-4"
 								>
-									<div class="flex items-center gap-3 text-tn-muted text-sm mb-1">
-										<time datetime={post.publishDate}>{formatDate(post.publishDate)}</time>
-										<span aria-hidden="true">•</span>
-										<span class="text-tn-text group-hover:text-tn-blue transition-colors font-medium">{post.title}</span>
-									</div>
-									{#if post.description}
-										<p class="text-tn-muted text-sm">{post.description}</p>
-									{/if}
-								</button>
+									<time
+										datetime={post.publishDate}
+										class="text-sm text-th-muted tabular-nums shrink-0"
+									>
+										{formatDate(post.publishDate)}
+									</time>
+									<span class="text-th-text group-hover:text-th-accent transition-colors">
+										{post.title}
+									</span>
+								</a>
 							</li>
 						{/each}
 					</ul>
-				</nav>
-			{/if}
+				</div>
+			</section>
 		{/if}
-	</Dialog.Content>
-</Dialog.Root>
+	</main>
 
-<style>
-	/* Content body styles */
-	.essay-body,
-	.journal-body {
-		font-family: var(--font-serif);
-		font-size: clamp(1.1rem, 1.5vw, 1.35rem);
-		line-height: 1.9;
-		color: var(--tn-text);
-		max-width: 65ch;
-	}
-
-	.essay-body {
-		white-space: pre-line;
-	}
-</style>
+	<!-- Footer -->
+	<footer class="shrink-0 w-full max-w-[640px] mx-auto px-6 py-6 border-t border-th-border">
+		<p class="text-sm text-th-muted">
+			Manhattan, NY
+		</p>
+	</footer>
+</div>
