@@ -12,7 +12,8 @@
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"sync": "bun run scripts/sync.ts"
 	},
 	"devDependencies": {
 		"@internationalized/date": "^3.8.1",
@@ -40,6 +41,10 @@
 		"@threlte/extras": "^9.7.1",
 		"convex": "^1.30.0",
 		"convex-svelte": "^0.0.12",
+		"gray-matter": "^4.0.3",
+		"katex": "^0.16.27",
+		"marked": "^17.0.1",
+		"mermaid": "^11.12.2",
 		"three": "^0.181.2"
 	}
 }

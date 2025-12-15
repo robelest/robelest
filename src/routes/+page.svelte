@@ -4,10 +4,10 @@
 	import { formatDate } from '$lib/utils/date';
 	import StarHeader from '$lib/components/StarHeader.svelte';
 
-	const postsQuery = useQuery(api.posts.list, { publishedOnly: true });
+	const journalQuery = useQuery(api.journal.list, { publishedOnly: true });
 
-	// Derived state for whether we have posts
-	const hasPosts = $derived(postsQuery.data && postsQuery.data.length > 0);
+	// Derived state for whether we have entries
+	const hasEntries = $derived(journalQuery.data && journalQuery.data.length > 0);
 </script>
 
 <svelte:head>
@@ -96,28 +96,28 @@
 			</ul>
 		</section>
 
-		<!-- Journal Section (only if posts exist) -->
-		{#if hasPosts}
+		<!-- Journal Section (only if entries exist) -->
+		{#if hasEntries}
 			<section id="journal" class="flex-1 min-h-0 flex flex-col">
 				<h2 class="shrink-0 text-sm font-medium text-th-muted uppercase tracking-widest mb-6">
 					Journal
 				</h2>
 				<div class="flex-1 min-h-0 overflow-y-auto pr-2 -mr-2">
 					<ul class="space-y-3">
-						{#each postsQuery.data as post}
+						{#each journalQuery.data as entry}
 							<li>
 								<a
-									href="/journal/{post.slug}"
+									href="/journal/{entry.slug}"
 									class="group flex flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-4"
 								>
 									<time
-										datetime={post.publishDate}
+										datetime={entry.publishDate}
 										class="text-sm text-th-muted tabular-nums shrink-0"
 									>
-										{formatDate(post.publishDate)}
+										{formatDate(entry.publishDate)}
 									</time>
 									<span class="text-th-text group-hover:text-th-accent transition-colors">
-										{post.title}
+										{entry.title}
 									</span>
 								</a>
 							</li>

@@ -8,7 +8,7 @@
  * @module
  */
 
-import type * as posts from "../posts.js";
+import type * as journal from "../journal.js";
 
 import type {
   ApiFromModules,
@@ -17,7 +17,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  posts: typeof posts;
+  journal: typeof journal;
 }>;
 
 /**
