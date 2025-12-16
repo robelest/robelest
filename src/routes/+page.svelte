@@ -27,9 +27,9 @@
 
 <div class="h-[100dvh] flex flex-col overflow-hidden">
 	<!-- Header -->
-	<header class="shrink-0 w-full max-w-[640px] mx-auto px-6 pt-12 sm:pt-16 pb-6">
+	<header class="shrink-0 w-full max-w-[640px] mx-auto px-4 sm:px-6 pt-10 sm:pt-16 pb-6">
 		<nav class="flex items-center justify-between">
-			<span class="text-xl sm:text-2xl text-th-text" style="font-family: var(--font-display);">
+			<span class="text-lg sm:text-xl md:text-2xl text-th-text" style="font-family: var(--font-display);">
 				Robel Estifanos
 			</span>
 			<StarHeader />
@@ -37,24 +37,24 @@
 	</header>
 
 	<!-- Main Content -->
-	<main class="flex-1 min-h-0 flex flex-col w-full max-w-[640px] mx-auto px-6 overflow-hidden">
+	<main class="flex-1 min-h-0 flex flex-col w-full max-w-[640px] mx-auto px-4 sm:px-6 overflow-hidden">
 		<!-- About Section -->
-		<section class="shrink-0 mb-10 sm:mb-12">
-			<p class="text-lg sm:text-xl leading-relaxed text-th-text mb-3" style="font-family: var(--font-display);">
+		<section class="shrink-0 mb-8 sm:mb-12">
+			<p class="text-base sm:text-lg leading-relaxed text-th-text mb-3" style="font-family: var(--font-display);">
 				Founding engineer at <a href="https://trestle.inc" target="_blank" rel="noopener noreferrer" class="hover:underline underline-offset-2">Trestle</a>,
 				building software that amplifies human compassion.
 			</p>
-			<p class="text-base leading-relaxed text-th-muted">
+			<p class="text-sm sm:text-base leading-relaxed text-th-muted">
 				Based in Manhattan. Interested in craft, clarity, and tools that respect human agency.
 			</p>
 		</section>
 
 		<!-- Elsewhere Section -->
-		<section id="elsewhere" class="shrink-0 mb-10 sm:mb-12">
-			<h2 class="text-sm font-medium text-th-muted uppercase tracking-widest mb-6">
+		<section id="elsewhere" class="shrink-0 mb-8 sm:mb-12">
+			<h2 class="text-xs sm:text-sm font-medium text-th-muted uppercase tracking-widest mb-4 sm:mb-6">
 				Elsewhere
 			</h2>
-			<ul class="flex flex-wrap gap-x-6 gap-y-2 text-th-text">
+			<ul class="flex flex-wrap gap-x-4 sm:gap-x-6 gap-y-2 text-sm sm:text-base text-th-text">
 				<li>
 					<a
 						href="https://github.com/robelest"
@@ -99,7 +99,7 @@
 		<!-- Journal Section (only if entries exist) -->
 		{#if hasEntries}
 			<section id="journal" class="flex-1 min-h-0 flex flex-col">
-				<h2 class="shrink-0 text-sm font-medium text-th-muted uppercase tracking-widest mb-6">
+				<h2 class="shrink-0 text-xs sm:text-sm font-medium text-th-muted uppercase tracking-widest mb-4 sm:mb-6">
 					Journal
 				</h2>
 				<div class="flex-1 min-h-0 overflow-y-auto pr-2 -mr-2">
@@ -129,8 +129,8 @@
 	</main>
 
 	<!-- Footer -->
-	<footer class="shrink-0 w-full max-w-[640px] mx-auto px-6 py-6 border-t border-th-border">
-		<p class="text-sm text-th-muted">
+	<footer class="shrink-0 w-full max-w-[640px] mx-auto px-4 sm:px-6 py-4 sm:py-6 border-t border-th-border">
+		<p class="text-xs sm:text-sm text-th-muted">
 			Manhattan, NY
 		</p>
 	</footer>

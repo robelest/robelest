@@ -133,8 +133,8 @@
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.27/dist/katex.min.css" crossorigin="anonymous" />
 </svelte:head>
 
-<div class="min-h-screen flex flex-col">
-	<main class="flex-1 w-full max-w-5xl mx-auto px-6 py-12 sm:py-20">
+<div class="min-h-screen">
+	<main class="w-full max-w-3xl lg:max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12 lg:py-20">
 		{#if entryQuery.isLoading}
 			<div class="flex items-center gap-3 text-th-muted">
 				<div class="w-4 h-4 border-2 border-th-muted border-t-transparent rounded-full animate-spin"></div>
@@ -142,12 +142,12 @@
 			</div>
 		{:else if entryQuery.data}
 			<!-- Header section -->
-			<header class="mb-10 max-w-2xl">
-				<h1 class="text-xl sm:text-2xl text-th-text mb-4 leading-tight" style="font-family: 'Crimson Pro', Georgia, serif;">
+			<header class="mb-8 sm:mb-10 max-w-2xl">
+				<h1 class="text-lg sm:text-xl md:text-2xl text-th-text mb-3 sm:mb-4 leading-tight" style="font-family: 'Crimson Pro', Georgia, serif;">
 					{entryQuery.data.title}
 				</h1>
 
-				<div class="flex flex-wrap items-center gap-3 text-xs text-th-muted">
+				<div class="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-th-muted">
 					<time datetime={entryQuery.data.publishDate} class="uppercase tracking-wide">
 						{formatDate(entryQuery.data.publishDate)}
 					</time>
@@ -174,7 +174,7 @@
 				</div>
 
 				{#if entryQuery.data.description}
-					<p class="text-th-subtle mt-4 text-sm leading-relaxed" style="font-family: 'Crimson Pro', Georgia, serif; font-style: italic;">
+					<p class="text-th-subtle mt-3 sm:mt-4 text-xs sm:text-sm leading-relaxed" style="font-family: 'Crimson Pro', Georgia, serif; font-style: italic;">
 						{entryQuery.data.description}
 					</p>
 				{/if}
@@ -183,13 +183,13 @@
 			<!-- Two-column layout -->
 			<div class="journal-layout">
 				<!-- Main content -->
-				<article class="typst-content" bind:this={contentEl}>
+				<article class="typst-content min-w-0" bind:this={contentEl}>
 					{@html renderedContent}
 				</article>
 
 				<!-- Sidebar TOC -->
 				{#if tocItems.length > 0}
-					<aside class="journal-sidebar hidden lg:block">
+					<aside class="journal-sidebar">
 						<nav class="journal-toc">
 							<span class="toc-label">Contents</span>
 							{#each tocItems as item}
@@ -209,10 +209,10 @@
 
 			<!-- Tags at bottom -->
 			{#if entryQuery.data.tags && entryQuery.data.tags.length > 0}
-				<div class="mt-12 pt-8 border-t border-th-border max-w-2xl">
-					<span class="text-xs uppercase tracking-wider text-th-muted mr-3">Tagged</span>
+				<div class="mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-th-border max-w-2xl">
+					<span class="text-xs uppercase tracking-wider text-th-muted mr-2 sm:mr-3">Tagged</span>
 					{#each entryQuery.data.tags as tag}
-						<span class="inline-block text-xs px-2 py-0.5 bg-th-surface text-th-muted rounded mr-2 mb-2">
+						<span class="inline-block text-xs px-2 py-0.5 bg-th-surface text-th-muted rounded mr-1.5 sm:mr-2 mb-2">
 							{tag}
 						</span>
 					{/each}
@@ -227,7 +227,7 @@
 	</main>
 
 	<!-- Footer -->
-	<footer class="w-full max-w-5xl mx-auto px-6 py-8 border-t border-th-border">
+	<footer class="w-full max-w-3xl lg:max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 border-t border-th-border">
 		<p class="text-xs text-th-muted uppercase tracking-wider">
 			Manhattan, NY
 		</p>

@@ -1,7 +1,25 @@
 // ═══════════════════════════════════════════════════════════════════════════════
-// WHITEPAPER TEMPLATE — Scholarly Editorial
-// A refined academic template with elegant typography and clear hierarchy
+// WHITEPAPER TEMPLATE — Editorial Design
+// A refined template with distinctive title page and warm color palette
+// Matches the web portfolio aesthetic
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THEME COLORS — Warm Editorial Palette
+// ─────────────────────────────────────────────────────────────────────────────
+
+#let th-base = rgb("#faf8f5")
+#let th-text = rgb("#1a1816")
+#let th-muted = rgb("#8c8780")
+#let th-subtle = rgb("#6b665f")
+#let th-accent = rgb("#c25d3a")
+#let th-border = rgb("#e8e4dc")
+#let th-surface = rgb("#f5f2ed")
+
+// Font stacks
+#let serif-fonts = ("Libertinus Serif", "Linux Libertine", "Crimson Pro", "Georgia")
+#let sans-fonts = ("SF Pro Display", "Helvetica Neue", "Arial", "sans-serif")
+#let mono-fonts = ("JetBrains Mono", "SF Mono", "Consolas", "monospace")
 
 
 #let whitepaper(
@@ -17,7 +35,7 @@
   // ─────────────────────────────────────────────────────────────────────────────
   set document(title: title, author: author)
 
-  // Page geometry - generous margins for readability
+  // Page geometry
   set page(
     paper: "us-letter",
     margin: (
@@ -28,146 +46,142 @@
     ),
     header: context {
       if counter(page).get().first() > 1 {
-        set text(size: 7.5pt, fill: luma(120), tracking: 0.04em)
+        set text(size: 7.5pt, fill: th-muted, tracking: 0.04em)
         smallcaps(title)
         h(1fr)
         text[#counter(page).display()]
       }
     },
-    footer: context {
-      if counter(page).get().first() == 1 {
-        set text(size: 7.5pt, fill: luma(150))
-        h(1fr)
-        text[#author]
-        h(1fr)
-      }
-    }
   )
 
   // ─────────────────────────────────────────────────────────────────────────────
   // TYPOGRAPHY
   // ─────────────────────────────────────────────────────────────────────────────
 
-  // Body text - Libertinus for scholarly feel, or fallback to system serif
   set text(
-    font: ("Libertinus Serif", "Linux Libertine", "Georgia"),
+    font: serif-fonts,
     size: 10pt,
     weight: "regular",
+    fill: th-text,
     lang: "en",
   )
 
-  // Paragraphs - justified with subtle first-line indent
   set par(
     justify: true,
-    leading: 0.72em,
-    first-line-indent: 0em,  // We'll handle this contextually
+    leading: 0.58em,
+    first-line-indent: 0em,
   )
 
-  // Headings configuration
   set heading(numbering: "1.1")
 
   // ─────────────────────────────────────────────────────────────────────────────
   // HEADING STYLES
   // ─────────────────────────────────────────────────────────────────────────────
 
-  // Level 1 headings - Section titles
+  // Level 1 headings - Section titles with accent
   show heading.where(level: 1): it => {
     set text(size: 12pt, weight: "regular")
-    v(1.5em)
+    v(0.8em)
     block[
       #text(
-        font: ("SF Pro Display", "Helvetica Neue", "Arial"),
+        font: sans-fonts,
         size: 8pt,
         weight: "semibold",
         tracking: 0.1em,
-        fill: luma(100)
+        fill: th-accent
       )[
         #upper(it.body)
       ]
     ]
-    v(0.3em)
-    line(length: 100%, stroke: 0.5pt + luma(220))
-    v(0.8em)
+    v(0.15em)
+    line(length: 100%, stroke: 0.5pt + th-border)
+    v(0.35em)
   }
 
-  // Level 2 headings - Subsections
+  // Level 2 headings
   show heading.where(level: 2): it => {
-    set text(size: 11pt, weight: "medium")
-    v(1.2em)
+    set text(size: 11pt, weight: "medium", fill: th-text)
+    v(0.7em)
     block[
       #text(weight: "semibold")[#it.body]
     ]
-    v(0.5em)
+    v(0.25em)
   }
 
-  // Level 3 headings - Minor subsections
+  // Level 3 headings
   show heading.where(level: 3): it => {
-    set text(size: 10pt, weight: "medium", style: "italic")
-    v(1em)
+    set text(size: 10pt, weight: "medium", style: "italic", fill: th-text)
+    v(0.5em)
     block[#it.body]
-    v(0.3em)
+    v(0.15em)
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // TITLE BLOCK
+  // TITLE PAGE — Split Layout
   // ─────────────────────────────────────────────────────────────────────────────
 
   {
-    set align(left)
-
-    // Title
-    text(
-      size: 18pt,
-      weight: "regular",
-      tracking: -0.01em,
-    )[#title]
-
-    v(1em)
-
-    // Author & Date line
-    text(
-      font: ("SF Pro Text", "Helvetica Neue", "Arial"),
-      size: 8.5pt,
-      fill: luma(100),
-    )[
-      #author #h(1em) #sym.dot.c #h(1em) #date
-    ]
-
-    v(0.5em)
-    line(length: 100%, stroke: 0.75pt + luma(200))
+    // Two-column grid: logo/author on left, title/abstract on right
+    grid(
+      columns: (100pt, 1fr),
+      column-gutter: 2em,
+      // Left column: Logo + Author info
+      [
+        #image("logo.svg", width: 60pt)
+        #v(1.5em)
+        #text(
+          font: sans-fonts,
+          size: 8.5pt,
+          fill: th-muted,
+        )[
+          #author
+        ]
+        #v(0.3em)
+        #text(
+          font: sans-fonts,
+          size: 8pt,
+          fill: th-muted,
+        )[
+          #date
+        ]
+      ],
+      // Right column: Title + Abstract
+      [
+        #text(
+          size: 20pt,
+          weight: "regular",
+          tracking: -0.01em,
+          fill: th-text,
+        )[#title]
+        #v(0.6em)
+        #line(length: 50pt, stroke: 1.5pt + th-accent)
+        #v(1em)
+        #if abstract != none [
+          #set text(size: 9.5pt, fill: th-subtle, style: "italic")
+          #set par(leading: 0.65em, justify: false)
+          #abstract
+        ]
+      ]
+    )
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // ABSTRACT
-  // ─────────────────────────────────────────────────────────────────────────────
-
-  if abstract != none {
-    v(1.5em)
-    block(
-      width: 100%,
-      inset: (left: 0.75em),
-      stroke: (left: 1.5pt + luma(200)),
-    )[
-      #set text(size: 9.5pt, fill: luma(80))
-      #set par(leading: 0.65em)
-      #abstract
-    ]
-  }
+  // Divider line
+  v(1.5em)
+  line(length: 100%, stroke: 0.5pt + th-border)
 
   // ─────────────────────────────────────────────────────────────────────────────
   // TABLE OF CONTENTS
   // ─────────────────────────────────────────────────────────────────────────────
 
   if show-toc {
-    v(2em)
+    v(1.5em)
 
-    // TOC header
     text(
-      font: ("SF Pro Display", "Helvetica Neue", "Arial"),
+      font: sans-fonts,
       size: 8pt,
       weight: "semibold",
       tracking: 0.1em,
-      fill: luma(100)
+      fill: th-muted
     )[CONTENTS]
 
     v(0.5em)
@@ -185,7 +199,6 @@
 
   v(2em)
 
-  // Set first-line indent for body paragraphs (not after headings)
   set par(first-line-indent: 1.5em)
 
   body
@@ -198,17 +211,17 @@
 // Code block with optional language label
 #let code-block(lang: none, body) = {
   block(
-    fill: luma(248),
-    stroke: 0.5pt + luma(230),
+    fill: th-surface,
+    stroke: 0.5pt + th-border,
     inset: 1em,
     radius: 2pt,
     width: 100%,
   )[
-    #set text(font: ("JetBrains Mono", "SF Mono", "Consolas"), size: 8.5pt)
+    #set text(font: mono-fonts, size: 8.5pt, fill: th-text)
     #set par(leading: 0.55em)
     #if lang != none [
       #place(top + right, dx: -0.5em, dy: -0.5em)[
-        #text(fill: luma(160), size: 7pt, tracking: 0.05em)[#upper(lang)]
+        #text(fill: th-muted, size: 7pt, tracking: 0.05em)[#upper(lang)]
       ]
     ]
     #body
@@ -220,17 +233,17 @@
   let accent = if kind == "warning" { rgb("#d4a72c") }
     else if kind == "error" { rgb("#c94242") }
     else if kind == "tip" { rgb("#3d8b40") }
-    else { rgb("#c25d3a") }  // default: note
+    else { th-accent }  // default: note
 
   block(
     width: 100%,
     inset: (left: 1em, y: 0.75em, right: 0.75em),
     stroke: (left: 2pt + accent),
-    fill: luma(252),
+    fill: th-surface,
   )[
     #if title != none [
       #text(
-        font: ("SF Pro Text", "Helvetica Neue", "Arial"),
+        font: sans-fonts,
         size: 8pt,
         weight: "semibold",
         fill: accent,
@@ -250,7 +263,7 @@
     dx: 1.5in,
     float: true,
   )[
-    #set text(size: 8pt, fill: luma(100))
+    #set text(size: 8pt, fill: th-muted)
     #set par(leading: 0.55em)
     #block(width: 1.25in)[#body]
   ]
@@ -263,7 +276,7 @@
     width: 100%,
     inset: (x: 2em, y: 1em),
   )[
-    #set text(size: 11pt, style: "italic", fill: luma(60))
+    #set text(size: 11pt, style: "italic", fill: th-subtle)
     #set par(leading: 0.7em)
     #body
   ]
@@ -275,8 +288,35 @@
   figure(
     body,
     caption: if caption != none {
-      text(size: 8.5pt)[#caption]
+      text(size: 8.5pt, fill: th-subtle)[#caption]
     },
     placement: placement,
   )
+}
+
+// Accent line separator
+#let separator() = {
+  v(1em)
+  align(center)[
+    #line(length: 30%, stroke: 0.75pt + th-accent)
+  ]
+  v(1em)
+}
+
+// Styled blockquote with accent border
+#let styled-quote(body, attribution: none) = {
+  block(
+    width: 100%,
+    inset: (left: 1.25em, y: 0.5em),
+    stroke: (left: 2pt + th-accent),
+  )[
+    #set text(style: "italic", fill: th-subtle)
+    #body
+    #if attribution != none [
+      #v(0.5em)
+      #align(right)[
+        #text(size: 9pt, style: "normal", fill: th-muted)[— #attribution]
+      ]
+    ]
+  ]
 }
