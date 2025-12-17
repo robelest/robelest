@@ -1,10 +1,18 @@
 <script lang="ts">
+	import type { PageData } from './$types.js';
 	import { useQuery } from 'convex-svelte';
 	import { api } from '../../convex/_generated/api';
 	import { formatDate } from '$lib/utils/date';
 	import StarHeader from '$lib/components/StarHeader.svelte';
 
-	const journalQuery = useQuery(api.journal.list, { publishedOnly: true });
+	let { data }: { data: PageData } = $props();
+
+	// Use initialData from server load to avoid loading flash, then stay reactive
+	const journalQuery = useQuery(
+		api.journal.list,
+		() => ({ publishedOnly: true }),
+		() => ({ initialData: data.journalEntries })
+	);
 
 	// Derived state for whether we have entries
 	const hasEntries = $derived(journalQuery.data && journalQuery.data.length > 0);

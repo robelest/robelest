@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { PageData } from './$types.js';
 	import { page } from '$app/stores';
 	import { useQuery } from 'convex-svelte';
 	import { api } from '../../../../convex/_generated/api';
@@ -8,6 +9,8 @@
 	import { onMount } from 'svelte';
 	import mermaid from 'mermaid';
 
+	let { data }: { data: PageData } = $props();
+
 	// Initialize mermaid with neutral theme
 	mermaid.initialize({
 		startOnLoad: false,
@@ -16,9 +19,12 @@
 	});
 
 	const slug = $derived($page.params.slug);
+
+	// Use initialData from server load to avoid loading flash, then stay reactive
 	const entryQuery = useQuery(
 		api.journal.getBySlug,
-		() => (slug ? { slug } : "skip")
+		() => (slug ? { slug } : "skip"),
+		() => ({ initialData: data.entry })
 	);
 
 	// Table of contents state
