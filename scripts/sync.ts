@@ -71,6 +71,12 @@ function escapeTypstString(str: string): string {
 	return str.replace(/"/g, '\\"').replace(/\\/g, "\\\\");
 }
 
+// Escape special Typst characters in content blocks (like table cells)
+// @ is used for references/citations in Typst, so we escape it
+function escapeTypstContent(text: string): string {
+	return text.replace(/@/g, "\\@");
+}
+
 function convertMarkdownBodyToTypst(markdown: string): string {
 	let result = markdown;
 
@@ -240,13 +246,13 @@ function convertMarkdownTables(markdown: string): string {
 
 		// Add headers (bold)
 		headers.forEach((h: string) => {
-			typstTable += `  [*${h}*],\n`;
+			typstTable += `  [*${escapeTypstContent(h)}*],\n`;
 		});
 
 		// Add body rows
 		rows.forEach((row: string[]) => {
 			row.forEach((cell) => {
-				typstTable += `  [${cell}],\n`;
+				typstTable += `  [${escapeTypstContent(cell)}],\n`;
 			});
 		});
 
