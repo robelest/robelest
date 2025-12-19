@@ -72,9 +72,9 @@ function escapeTypstString(str: string): string {
 }
 
 // Escape special Typst characters in content blocks (like table cells)
-// @ is used for references/citations in Typst, so we escape it
+// @ is used for references/citations in Typst, * is used for emphasis
 function escapeTypstContent(text: string): string {
-	return text.replace(/@/g, "\\@");
+	return text.replace(/@/g, "\\@").replace(/\*/g, "\\*");
 }
 
 function convertMarkdownBodyToTypst(markdown: string): string {
