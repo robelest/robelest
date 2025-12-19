@@ -140,10 +140,21 @@
 </svelte:head>
 
 <div class="min-h-screen">
+	<!-- Screen reader announcements for loading state -->
+	<div aria-live="polite" aria-atomic="true" class="sr-only">
+		{#if entryQuery.isLoading}
+			Loading article content
+		{:else if entryQuery.data}
+			Article loaded: {entryQuery.data.title}
+		{:else}
+			Article not found
+		{/if}
+	</div>
+
 	<main class="w-full max-w-3xl lg:max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12 lg:py-20">
 		{#if entryQuery.isLoading}
-			<div class="flex items-center gap-3 text-th-muted">
-				<div class="w-4 h-4 border-2 border-th-muted border-t-transparent rounded-full animate-spin"></div>
+			<div class="flex items-center gap-3 text-th-muted" role="status" aria-label="Loading article">
+				<div class="w-4 h-4 border-2 border-th-muted border-t-transparent rounded-full animate-spin" aria-hidden="true"></div>
 				<span class="text-sm">Loading...</span>
 			</div>
 		{:else if entryQuery.data}
@@ -159,22 +170,23 @@
 					</time>
 
 					{#if entryQuery.data.fileSize}
-						<span class="text-th-border">·</span>
+						<span class="text-th-border" aria-hidden="true">·</span>
 						<span>{formatFileSize(entryQuery.data.fileSize)}</span>
 					{/if}
 
 					{#if entryQuery.data.category}
-						<span class="text-th-border">·</span>
+						<span class="text-th-border" aria-hidden="true">·</span>
 						<span class="uppercase tracking-wide">{entryQuery.data.category}</span>
 					{/if}
 
-					<span class="text-th-border">·</span>
+					<span class="text-th-border" aria-hidden="true">·</span>
 					<a
 						href={entryQuery.data.pdfUrl}
 						download
 						class="inline-flex items-center gap-1.5 text-th-accent hover:text-th-accent-hover transition-colors"
+						aria-label="Download PDF version of {entryQuery.data.title}"
 					>
-						<Download class="w-3.5 h-3.5" />
+						<Download class="w-3.5 h-3.5" aria-hidden="true" />
 						<span>PDF</span>
 					</a>
 				</div>
@@ -195,15 +207,16 @@
 
 				<!-- Sidebar TOC -->
 				{#if tocItems.length > 0}
-					<aside class="journal-sidebar">
-						<nav class="journal-toc">
-							<span class="toc-label">Contents</span>
+					<aside class="journal-sidebar" aria-label="Article sidebar">
+						<nav class="journal-toc" aria-label="Table of contents">
+							<span class="toc-label" id="toc-heading">Contents</span>
 							{#each tocItems as item}
 								<button
 									type="button"
 									onclick={() => scrollToHeading(item.id)}
 									class="toc-item toc-h{item.level}"
 									class:active={activeId === item.id}
+									aria-current={activeId === item.id ? 'true' : undefined}
 								>
 									{item.text}
 								</button>
@@ -233,10 +246,15 @@
 	</main>
 
 	<!-- Footer -->
-	<footer class="w-full max-w-3xl lg:max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 border-t border-th-border">
-		<p class="text-xs text-th-muted uppercase tracking-wider">
-			Manhattan, NY
-		</p>
+	<footer class="w-full max-w-3xl lg:max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 border-t border-th-border" aria-label="Site information">
+		<nav class="flex items-center justify-between" aria-label="Footer navigation">
+			<a href="/" class="text-xs text-th-muted hover:text-th-accent transition-colors uppercase tracking-wider">
+				← Back to home
+			</a>
+			<p class="text-xs text-th-muted uppercase tracking-wider">
+				Manhattan, NY
+			</p>
+		</nav>
 	</footer>
 </div>
 

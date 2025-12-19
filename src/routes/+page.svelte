@@ -36,7 +36,7 @@
 <div class="h-[100dvh] flex flex-col overflow-hidden">
 	<!-- Header -->
 	<header class="shrink-0 w-full max-w-[640px] mx-auto px-4 sm:px-6 pt-10 sm:pt-16 pb-6">
-		<nav class="flex items-center justify-between">
+		<nav class="flex items-center justify-between" aria-label="Main navigation">
 			<span class="text-lg sm:text-xl md:text-2xl text-th-text" style="font-family: var(--font-display);">
 				Robel Estifanos
 			</span>
@@ -58,19 +58,20 @@
 		</section>
 
 		<!-- Elsewhere Section -->
-		<section id="elsewhere" class="shrink-0 mb-8 sm:mb-12">
-			<h2 class="text-xs sm:text-sm font-medium text-th-muted uppercase tracking-widest mb-4 sm:mb-6">
+		<section id="elsewhere" class="shrink-0 mb-8 sm:mb-12" aria-labelledby="elsewhere-heading">
+			<h2 id="elsewhere-heading" class="text-xs sm:text-sm font-medium text-th-muted uppercase tracking-widest mb-4 sm:mb-6">
 				Elsewhere
 			</h2>
-			<ul class="flex flex-wrap gap-x-4 sm:gap-x-6 gap-y-2 text-sm sm:text-base text-th-text">
+			<ul class="flex flex-wrap gap-x-4 sm:gap-x-6 gap-y-2 text-sm sm:text-base text-th-text" role="list">
 				<li>
 					<a
 						href="https://github.com/robelest"
 						target="_blank"
 						rel="noopener noreferrer"
 						class="hover:text-th-accent transition-colors"
+						aria-label="GitHub profile (opens in new tab)"
 					>
-						GitHub
+						GitHub<span class="sr-only"> (opens in new tab)</span>
 					</a>
 				</li>
 				<li>
@@ -79,8 +80,9 @@
 						target="_blank"
 						rel="noopener noreferrer"
 						class="hover:text-th-accent transition-colors"
+						aria-label="Twitter profile (opens in new tab)"
 					>
-						Twitter
+						Twitter<span class="sr-only"> (opens in new tab)</span>
 					</a>
 				</li>
 				<li>
@@ -89,14 +91,16 @@
 						target="_blank"
 						rel="noopener noreferrer"
 						class="hover:text-th-accent transition-colors"
+						aria-label="LinkedIn profile (opens in new tab)"
 					>
-						LinkedIn
+						LinkedIn<span class="sr-only"> (opens in new tab)</span>
 					</a>
 				</li>
 				<li>
 					<a
 						href="mailto:robel@trestle.inc"
 						class="hover:text-th-accent transition-colors"
+						aria-label="Send email to robel@trestle.inc"
 					>
 						Email
 					</a>
@@ -106,8 +110,8 @@
 
 		<!-- Journal Section (only if entries exist) -->
 		{#if hasEntries}
-			<section id="journal" class="flex-1 min-h-0 flex flex-col">
-				<h2 class="shrink-0 text-xs sm:text-sm font-medium text-th-muted uppercase tracking-widest mb-4 sm:mb-6">
+			<section id="journal" class="flex-1 min-h-0 flex flex-col" aria-labelledby="journal-heading">
+				<h2 id="journal-heading" class="shrink-0 text-xs sm:text-sm font-medium text-th-muted uppercase tracking-widest mb-4 sm:mb-6">
 					Journal
 				</h2>
 				<div class="flex-1 min-h-0 overflow-y-auto pr-2 -mr-2">
@@ -137,7 +141,7 @@
 	</main>
 
 	<!-- Footer -->
-	<footer class="shrink-0 w-full max-w-[640px] mx-auto px-4 sm:px-6 py-4 sm:py-6 border-t border-th-border">
+	<footer class="shrink-0 w-full max-w-[640px] mx-auto px-4 sm:px-6 py-4 sm:py-6 border-t border-th-border" aria-label="Site information">
 		<p class="text-xs sm:text-sm text-th-muted">
 			Manhattan, NY
 		</p>
