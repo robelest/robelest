@@ -28,9 +28,12 @@
 	<meta property="og:title" content="Robel Estifanos" />
 	<meta property="og:description" content="Founding engineer building software that amplifies human compassion." />
 	<meta property="og:url" content="https://robelestifanos.com" />
+	<meta property="og:image" content="https://robelestifanos.com/logo512.png" />
 	<meta property="og:type" content="website" />
 	<meta name="twitter:card" content="summary" />
 	<meta name="twitter:title" content="Robel Estifanos" />
+	<meta name="twitter:description" content="Founding engineer building software that amplifies human compassion." />
+	<meta name="twitter:image" content="https://robelestifanos.com/logo512.png" />
 </svelte:head>
 
 <div class="h-[100dvh] flex flex-col overflow-hidden">
