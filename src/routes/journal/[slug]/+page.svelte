@@ -199,7 +199,7 @@
 			</header>
 
 			<!-- Two-column layout -->
-			<div class="journal-layout">
+			<div class="grid grid-cols-1 lg:grid-cols-[1fr_160px] gap-8 items-start">
 				<!-- Main content -->
 				<article class="typst-content min-w-0" bind:this={contentEl}>
 					{@html renderedContent}
@@ -207,14 +207,17 @@
 
 				<!-- Sidebar TOC -->
 				{#if tocItems.length > 0}
-					<aside class="journal-sidebar" aria-label="Article sidebar">
-						<nav class="journal-toc" aria-label="Table of contents">
-							<span class="toc-label" id="toc-heading">Contents</span>
+					<aside class="hidden lg:block sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto" aria-label="Article sidebar">
+						<nav class="pl-3 border-l border-th-border text-[0.6875rem] leading-relaxed font-sans" aria-label="Table of contents">
+							<span class="block text-[0.5625rem] font-semibold uppercase tracking-widest text-th-muted mb-3">Contents</span>
 							{#each tocItems as item}
 								<button
 									type="button"
 									onclick={() => scrollToHeading(item.id)}
-									class="toc-item toc-h{item.level}"
+									class="toc-item"
+									class:toc-h1={item.level === 1}
+									class:toc-h2={item.level === 2}
+									class:toc-h3={item.level === 3}
 									class:active={activeId === item.id}
 									aria-current={activeId === item.id ? 'true' : undefined}
 								>
@@ -260,35 +263,25 @@
 
 <style>
 	.toc-item {
-		display: block;
-		width: 100%;
-		text-align: left;
-		background: none;
-		border: none;
-		cursor: pointer;
-		color: #8c8780;
-		padding: 0.25rem 0;
-		font-size: 0.75rem;
-		line-height: 1.5;
-		transition: color 0.15s ease;
+		@apply block w-full text-left bg-transparent border-none cursor-pointer py-1 text-xs leading-relaxed transition-colors;
+		color: var(--color-th-muted);
 	}
 
 	.toc-item:hover,
 	.toc-item.active {
-		color: #c25d3a;
+		color: var(--color-th-accent);
 	}
 
 	.toc-h1 {
-		font-weight: 500;
-		color: #1a1816;
+		@apply font-medium;
+		color: var(--color-th-text);
 	}
 
 	.toc-h2 {
-		font-weight: 500;
+		@apply font-medium;
 	}
 
 	.toc-h3 {
-		padding-left: 0.75rem;
-		font-size: 0.6875rem;
+		@apply pl-3 text-[0.6875rem];
 	}
 </style>
