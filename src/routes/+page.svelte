@@ -22,17 +22,17 @@
 	<title>Robel Estifanos</title>
 	<meta
 		name="description"
-		content="Founding engineer building software that amplifies human compassion."
+		content="Technical lead at Trestle. Focused on reducing cognitive load and designing durable software."
 	/>
-	<meta name="keywords" content="Robel Estifanos, founding engineer, Trestle, software" />
+	<meta name="keywords" content="Robel Estifanos, Trestle, software engineering, technical leadership" />
 	<meta property="og:title" content="Robel Estifanos" />
-	<meta property="og:description" content="Founding engineer building software that amplifies human compassion." />
+	<meta property="og:description" content="Technical lead at Trestle. Focused on reducing cognitive load and designing durable software." />
 	<meta property="og:url" content="https://robelestifanos.com" />
 	<meta property="og:image" content="https://robelestifanos.com/logo512.png" />
 	<meta property="og:type" content="website" />
 	<meta name="twitter:card" content="summary" />
 	<meta name="twitter:title" content="Robel Estifanos" />
-	<meta name="twitter:description" content="Founding engineer building software that amplifies human compassion." />
+	<meta name="twitter:description" content="Technical lead at Trestle. Focused on reducing cognitive load and designing durable software." />
 	<meta name="twitter:image" content="https://robelestifanos.com/logo512.png" />
 </svelte:head>
 
@@ -51,12 +51,8 @@
 	<main class="flex-1 min-h-0 flex flex-col w-full max-w-[640px] mx-auto px-4 sm:px-6 overflow-hidden">
 		<!-- About Section -->
 		<section class="shrink-0 mb-8 sm:mb-12">
-			<p class="text-base sm:text-lg leading-relaxed text-th-text mb-3" style="font-family: var(--font-display);">
-				Founding engineer at <a href="https://trestle.inc" target="_blank" rel="noopener noreferrer" class="hover:underline underline-offset-2">Trestle</a>,
-				building software that amplifies human compassion.
-			</p>
-			<p class="text-sm sm:text-base leading-relaxed text-th-muted">
-				Based in Manhattan. Interested in craft, clarity, and tools that respect human agency.
+			<p class="text-sm sm:text-base leading-relaxed text-th-text" style="font-family: var(--font-display);">
+				From enterprise infrastructure to building on the ground, I focus on environments where software quality and judgment actually matter. I now lead technical direction <a href="https://trestle.inc" target="_blank" rel="noopener noreferrer" class="hover:underline underline-offset-2">@Trestle</a>, building a system of record designed around the authentic workflows of frontline staff. As AI collapses the cost of automation, I've shifted my focus to the new frontier: reducing cognitive load and designing software that remains durable over time.
 			</p>
 		</section>
 
