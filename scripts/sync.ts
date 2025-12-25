@@ -30,6 +30,11 @@ interface SyncResult {
 	error?: string;
 }
 
+interface ProtectedContent {
+	text: string;
+	placeholders: Map<string, string>;
+}
+
 async function ensureDir(dir: string) {
 	try {
 		await mkdir(dir, { recursive: true });
@@ -47,11 +52,7 @@ function deriveDateFromFilename(filename: string): string {
 	return match ? match[1] : new Date().toISOString().split("T")[0];
 }
 
-// Convert markdown to Typst format
-function markdownToTypst(
-	markdown: string,
-	frontmatter: Frontmatter
-): string {
+function markdownToTypst(markdown: string, frontmatter: Frontmatter): string {
 	let typst = `#import "templates/whitepaper.typ": whitepaper
 
 #show: whitepaper.with(
@@ -61,8 +62,6 @@ function markdownToTypst(
 )
 
 `;
-
-	// Convert markdown body to Typst
 	typst += convertMarkdownBodyToTypst(markdown);
 	return typst;
 }
@@ -71,91 +70,143 @@ function escapeTypstString(str: string): string {
 	return str.replace(/"/g, '\\"').replace(/\\/g, "\\\\");
 }
 
-// Escape special Typst characters in content blocks (like table cells)
-// @ is used for references/citations in Typst, * is used for emphasis
-function escapeTypstContent(text: string): string {
-	return text.replace(/@/g, "\\@").replace(/\*/g, "\\*");
+function escapeTypstTableContent(text: string): string {
+	return text
+		.replace(/@/g, '#"@"')
+		.replace(/\*/g, "\\*")
+		.replace(/_/g, "\\_")
+		.replace(/\$/g, "\\$");
+}
+
+function protectCodeAndSpecialSyntax(markdown: string): ProtectedContent {
+	const placeholders = new Map<string, string>();
+	let counter = 0;
+	let text = markdown;
+
+	const protect = (match: string): string => {
+		const key = `__PROTECTED_${counter++}__`;
+		placeholders.set(key, match);
+		return key;
+	};
+
+	// 1. Fenced code blocks (``` ... ```)
+	text = text.replace(/```[\s\S]*?```/g, protect);
+
+	// 2. Inline code (` ... `)
+	text = text.replace(/`[^`\n]+`/g, protect);
+
+	// 3. Paired emphasis (_text_ with content, not standalone _)
+	text = text.replace(/_([^\s_][^_]*[^\s_])_/g, protect);
+	text = text.replace(/_(\S)_/g, protect);
+
+	// 4. Block math ($$...$$)
+	text = text.replace(/\$\$[\s\S]+?\$\$/g, protect);
+
+	// 5. Inline math ($...$) - paired only
+	text = text.replace(/(?<!\$)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)/g, protect);
+
+	return { text, placeholders };
+}
+
+function escapeUnpairedTypstChars(text: string): string {
+	return text
+		.replace(/\$/g, "\\$")
+		.replace(/_/g, "\\_")
+		.replace(/@/g, '#"@"');
+}
+
+function restorePlaceholders(
+	text: string,
+	placeholders: Map<string, string>
+): string {
+	let result = text;
+	for (const [key, value] of placeholders) {
+		result = result.replace(key, value);
+	}
+	return result;
 }
 
 function convertMarkdownBodyToTypst(markdown: string): string {
-	let result = markdown;
+	// PHASE 1: Protect code, inline code, emphasis pairs, and math pairs
+	const { text: protectedText, placeholders } =
+		protectCodeAndSpecialSyntax(markdown);
 
-	// Convert headers
+	// PHASE 2: Escape unpaired $ and _ (safe now since paired ones are protected)
+	let result = escapeUnpairedTypstChars(protectedText);
+
+	// PHASE 3: Restore protected content
+	result = restorePlaceholders(result, placeholders);
+
+	// PHASE 4: Convert markdown to Typst
+
+	// Headers
 	result = result.replace(/^### (.+)$/gm, "=== $1");
 	result = result.replace(/^## (.+)$/gm, "== $1");
 	result = result.replace(/^# (.+)$/gm, "= $1");
 
-	// Convert bold and italic (before other inline formatting)
-	result = result.replace(/\*\*\*(.+?)\*\*\*/g, "_*$1*_"); // bold+italic
-	result = result.replace(/\*\*(.+?)\*\*/g, "*$1*"); // bold
-	// Don't convert single asterisks to avoid conflict with already converted bold
-	result = result.replace(/__(.+?)__/g, "*$1*"); // bold (underscore)
+	// Bold and italic
+	result = result.replace(/\*\*\*(.+?)\*\*\*/g, "_*$1*_");
+	result = result.replace(/\*\*(.+?)\*\*/g, "*$1*");
+	result = result.replace(/__(.+?)__/g, "*$1*");
 
-	// Convert links [text](url) - before code blocks to avoid issues
-	result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "#link(\"$2\")[$1]");
+	// Links [text](url)
+	result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '#link("$2")[$1]');
 
-	// Convert block math $$...$$ to Typst $ ... $
-	// Need to convert LaTeX syntax to Typst math syntax
+	// Block math $$...$$ to Typst $ ... $
 	result = result.replace(/\$\$([\s\S]+?)\$\$/g, (_, math) => {
 		const typstMath = convertLatexToTypstMath(math.trim());
 		return `$ ${typstMath} $`;
 	});
 
-	// Convert inline math $...$ (but not $$)
-	result = result.replace(/(?<!\$)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)/g, (_, math) => {
-		const typstMath = convertLatexToTypstMath(math.trim());
-		return `$${typstMath}$`;
-	});
-
-	// Convert code blocks with language - skip mermaid for now (pintorita has issues)
+	// Inline math $...$
 	result = result.replace(
-		/```(\w+)\n([\s\S]*?)```/g,
-		(_, lang, code) => {
-			// Skip mermaid diagrams - just show as code for now
-			// TODO: Re-enable when pintorita works
-			return `\`\`\`${lang}\n${code.trim()}\n\`\`\``;
+		/(?<!\$)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)/g,
+		(_, math) => {
+			const typstMath = convertLatexToTypstMath(math.trim());
+			return `$${typstMath}$`;
 		}
 	);
 
-	// Convert plain code blocks
+	// Code blocks with language
+	result = result.replace(/```(\w+)\n([\s\S]*?)```/g, (_, lang, code) => {
+		return `\`\`\`${lang}\n${code.trim()}\n\`\`\``;
+	});
+
+	// Plain code blocks
 	result = result.replace(/```\n([\s\S]*?)```/g, "```\n$1```");
 
-	// Convert unordered lists
+	// Unordered lists
 	result = result.replace(/^(\s*)[-*] (.+)$/gm, (_, indent, text) => {
 		const level = Math.floor(indent.length / 2);
 		return "  ".repeat(level) + "- " + text;
 	});
 
-	// Convert ordered lists
+	// Ordered lists
 	result = result.replace(/^(\s*)\d+\. (.+)$/gm, (_, indent, text) => {
 		const level = Math.floor(indent.length / 2);
 		return "  ".repeat(level) + "+ " + text;
 	});
 
-	// Convert blockquotes
+	// Blockquotes
 	result = result.replace(/^> (.+)$/gm, "#quote[$1]");
 
-	// Convert horizontal rules
+	// Horizontal rules
 	result = result.replace(/^---+$/gm, "#line(length: 100%)");
 
-	// Convert images ![alt](src)
+	// Images ![alt](src)
 	result = result.replace(
 		/!\[([^\]]*)\]\(([^)]+)\)/g,
 		'#figure(image("$2"), caption: [$1])'
 	);
 
-	// Convert tables
+	// Tables
 	result = convertMarkdownTables(result);
 
 	return result;
 }
 
-// Convert LaTeX math notation to Typst math notation
 function convertLatexToTypstMath(latex: string): string {
 	let result = latex;
-
-	// Greek letters (already work in Typst, but ensure lowercase)
-	// No conversion needed for most Greek letters
 
 	// Common LaTeX commands to Typst
 	result = result.replace(/\\mathbf\{([^}]+)\}/g, "bold($1)");
@@ -178,34 +229,58 @@ function convertLatexToTypstMath(latex: string): string {
 	result = result.replace(/\\infty/g, "infinity");
 
 	// Integrals
-	result = result.replace(/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, "integral_($1)^($2)");
+	result = result.replace(
+		/\\int_\{([^}]+)\}\^\{([^}]+)\}/g,
+		"integral_($1)^($2)"
+	);
 	result = result.replace(/\\int/g, "integral");
 
 	// Sum and product
 	result = result.replace(/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, "sum_($1)^($2)");
-	result = result.replace(/\\prod_\{([^}]+)\}\^\{([^}]+)\}/g, "product_($1)^($2)");
+	result = result.replace(
+		/\\prod_\{([^}]+)\}\^\{([^}]+)\}/g,
+		"product_($1)^($2)"
+	);
 
-	// dx, dy differentials - handle standalone dx
+	// dx, dy differentials
 	result = result.replace(/\\,?d([xyz])\b/g, " dif $1");
-	// Handle dx without backslash at word boundary
 	result = result.replace(/\bd([xyz])\b(?!\w)/g, " dif $1");
 
 	// Matrices - pmatrix
-	result = result.replace(/\\begin\{pmatrix\}([\s\S]*?)\\end\{pmatrix\}/g, (_, content) => {
-		// Convert LaTeX matrix to Typst mat()
-		const rows = content.trim().split("\\\\").map((row: string) =>
-			row.trim().split("&").map((cell: string) => cell.trim()).join(", ")
-		);
-		return `mat(\n  ${rows.join(";\n  ")};\n)`;
-	});
+	result = result.replace(
+		/\\begin\{pmatrix\}([\s\S]*?)\\end\{pmatrix\}/g,
+		(_, content) => {
+			const rows = content
+				.trim()
+				.split("\\\\")
+				.map((row: string) =>
+					row
+						.trim()
+						.split("&")
+						.map((cell: string) => cell.trim())
+						.join(", ")
+				);
+			return `mat(\n  ${rows.join(";\n  ")};\n)`;
+		}
+	);
 
 	// Matrices - bmatrix
-	result = result.replace(/\\begin\{bmatrix\}([\s\S]*?)\\end\{bmatrix\}/g, (_, content) => {
-		const rows = content.trim().split("\\\\").map((row: string) =>
-			row.trim().split("&").map((cell: string) => cell.trim()).join(", ")
-		);
-		return `mat(delim: "[",\n  ${rows.join(";\n  ")};\n)`;
-	});
+	result = result.replace(
+		/\\begin\{bmatrix\}([\s\S]*?)\\end\{bmatrix\}/g,
+		(_, content) => {
+			const rows = content
+				.trim()
+				.split("\\\\")
+				.map((row: string) =>
+					row
+						.trim()
+						.split("&")
+						.map((cell: string) => cell.trim())
+						.join(", ")
+				);
+			return `mat(delim: "[",\n  ${rows.join(";\n  ")};\n)`;
+		}
+	);
 
 	// Common symbols
 	result = result.replace(/\\cdot/g, "dot");
@@ -222,37 +297,42 @@ function convertLatexToTypstMath(latex: string): string {
 	result = result.replace(/\\Rightarrow/g, "=>");
 	result = result.replace(/\\Leftarrow/g, "<=");
 
-	// Remove remaining backslashes for common functions that work in Typst
+	// Common functions
 	result = result.replace(/\\(sin|cos|tan|log|ln|exp|lim|max|min)/g, "$1");
 
 	return result;
 }
 
-// Convert markdown tables to Typst tables
 function convertMarkdownTables(markdown: string): string {
-	// Match markdown table pattern
 	const tableRegex = /\|(.+)\|\n\|[-|\s:]+\|\n((?:\|.+\|\n?)+)/gm;
 
 	return markdown.replace(tableRegex, (match, headerRow, bodyRows) => {
-		const headers = headerRow.split("|").map((h: string) => h.trim()).filter(Boolean);
-		const rows = bodyRows.trim().split("\n").map((row: string) =>
-			row.split("|").map((cell: string) => cell.trim()).filter(Boolean)
-		);
+		const headers = headerRow
+			.split("|")
+			.map((h: string) => h.trim())
+			.filter(Boolean);
+		const rows = bodyRows
+			.trim()
+			.split("\n")
+			.map((row: string) =>
+				row
+					.split("|")
+					.map((cell: string) => cell.trim())
+					.filter(Boolean)
+			);
 
 		const colCount = headers.length;
 		const colSpec = `(${Array(colCount).fill("1fr").join(", ")})`;
 
 		let typstTable = `#table(\n  columns: ${colSpec},\n  inset: 8pt,\n`;
 
-		// Add headers (bold)
 		headers.forEach((h: string) => {
-			typstTable += `  [*${escapeTypstContent(h)}*],\n`;
+			typstTable += `  [*${escapeTypstTableContent(h)}*],\n`;
 		});
 
-		// Add body rows
 		rows.forEach((row: string[]) => {
 			row.forEach((cell) => {
-				typstTable += `  [${escapeTypstContent(cell)}],\n`;
+				typstTable += `  [${escapeTypstTableContent(cell)}],\n`;
 			});
 		});
 
@@ -273,13 +353,11 @@ async function main() {
 	const client = new ConvexHttpClient(convexUrl);
 	const results: SyncResult[] = [];
 
-	// Ensure build directories exist
 	const pdfDir = join(BUILD_DIR, "pdfs");
 	const typstDir = join(BUILD_DIR, "typst");
 	await ensureDir(pdfDir);
 	await ensureDir(typstDir);
 
-	// Check if content directory exists
 	let files: string[];
 	try {
 		const entries = await readdir(CONTENT_DIR, { recursive: true });
@@ -303,14 +381,12 @@ async function main() {
 		return;
 	}
 
-	// Track local slugs for deletion detection
 	const localSlugs = new Set<string>();
 
 	for (const file of files) {
 		const filePath = join(CONTENT_DIR, file);
 		const rawContent = await readFile(filePath, "utf-8");
 
-		// Parse frontmatter with gray-matter
 		const { data, content: markdown } = matter(rawContent);
 		const frontmatter = data as Frontmatter;
 
@@ -324,7 +400,6 @@ async function main() {
 		const slug = frontmatter.slug || deriveSlug(file);
 		localSlugs.add(slug);
 
-		// Handle publishDate - gray-matter may parse it as Date object
 		let publishDate: string;
 		if (frontmatter.publishDate instanceof Date) {
 			publishDate = frontmatter.publishDate.toISOString().split("T")[0];
@@ -336,23 +411,19 @@ async function main() {
 		const contentHash = createHash("md5").update(rawContent).digest("hex");
 
 		try {
-			// Convert markdown to Typst - write to journal/ so it can access templates/
 			const typstContent = markdownToTypst(markdown, frontmatter);
 			const typstPath = join(CONTENT_DIR, `.tmp-${slug}.typ`);
 			await writeFile(typstPath, typstContent);
 
-			// Compile to PDF
 			const pdfPath = join(pdfDir, `${slug}.pdf`);
 			execSync(
 				`typst compile --root "${CONTENT_DIR}" "${typstPath}" "${pdfPath}"`,
 				{ stdio: "pipe" }
 			);
 
-			// Get file stats
 			const pdfStats = await stat(pdfPath);
 			const pdfBuffer = await readFile(pdfPath);
 
-			// Upload PDF to Convex Storage
 			const uploadUrl = await client.mutation(
 				api.journal.generateUploadUrl,
 				{}
@@ -371,12 +442,11 @@ async function main() {
 				storageId: Id<"_storage">;
 			};
 
-			// Upsert journal entry with markdown content
 			const result = await client.mutation(api.journal.upsert, {
 				slug,
 				title: frontmatter.title,
 				description: frontmatter.description,
-				content: markdown, // Store original markdown
+				content: markdown,
 				pdfStorageId: storageId,
 				publishDate,
 				published: frontmatter.published ?? false,
@@ -391,7 +461,6 @@ async function main() {
 			const icon = result.action === "created" ? "✓" : "↻";
 			console.log(`${icon} ${slug}: ${result.action}`);
 
-			// Clean up temp typst file from journal/ directory
 			await unlink(typstPath).catch(() => {});
 		} catch (error) {
 			results.push({
@@ -403,7 +472,6 @@ async function main() {
 		}
 	}
 
-	// Handle deletions (entries in Convex but not in local files)
 	try {
 		const remoteSlugs = await client.query(api.journal.listSlugs, {});
 		for (const remoteSlug of remoteSlugs) {
@@ -419,7 +487,6 @@ async function main() {
 		console.error("Warning: Could not check for deletions:", error);
 	}
 
-	// Summary
 	console.log("\n" + "═".repeat(50));
 	console.log("Sync Complete:");
 	console.log(
