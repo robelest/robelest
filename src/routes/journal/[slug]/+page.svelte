@@ -37,6 +37,17 @@
 	let tocItems = $state<TocItem[]>([]);
 	let activeId = $state<string>('');
 	let contentEl: HTMLElement | undefined = $state();
+	let sidebarEl: HTMLElement | undefined = $state();
+
+	// Scroll active TOC item into view when it changes
+	$effect(() => {
+		if (activeId && sidebarEl) {
+			const activeButton = sidebarEl.querySelector(`[data-toc-id="${activeId}"]`);
+			if (activeButton) {
+				activeButton.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+			}
+		}
+	});
 
 	// Render markdown to HTML
 	const renderedContent = $derived(
@@ -207,12 +218,13 @@
 
 				<!-- Sidebar TOC -->
 				{#if tocItems.length > 0}
-					<aside class="hidden lg:block sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto" aria-label="Article sidebar">
+					<aside bind:this={sidebarEl} class="hidden lg:block sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto" aria-label="Article sidebar">
 						<nav class="pl-3 border-l border-th-border text-[0.6875rem] leading-relaxed font-sans" aria-label="Table of contents">
 							<span class="block text-[0.5625rem] font-semibold uppercase tracking-widest text-th-muted mb-3">Contents</span>
 							{#each tocItems as item}
 								<button
 									type="button"
+									data-toc-id={item.id}
 									onclick={() => scrollToHeading(item.id)}
 									class="toc-item"
 									class:toc-h1={item.level === 1}
@@ -263,8 +275,17 @@
 
 <style>
 	.toc-item {
-		@apply block w-full text-left bg-transparent border-none cursor-pointer py-1 text-xs leading-relaxed transition-colors;
+		display: block;
+		width: 100%;
+		text-align: left;
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		padding: 0.25rem 0;
+		font-size: 0.75rem;
+		line-height: 1.625;
 		color: var(--color-th-muted);
+		transition: color 0.15s ease;
 	}
 
 	.toc-item:hover,
@@ -273,15 +294,16 @@
 	}
 
 	.toc-h1 {
-		@apply font-medium;
+		font-weight: 500;
 		color: var(--color-th-text);
 	}
 
 	.toc-h2 {
-		@apply font-medium;
+		font-weight: 500;
 	}
 
 	.toc-h3 {
-		@apply pl-3 text-[0.6875rem];
+		padding-left: 0.75rem;
+		font-size: 0.6875rem;
 	}
 </style>
