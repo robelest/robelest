@@ -210,32 +210,7 @@ James Arthur (ElectricSQL CEO) wrote candidly about the pivot: the original arch
 
 ### The Insight I Kept
 
-Buried in ElectricSQL's legacy architecture was the key insight I needed: **the replication table pattern**.
-
-PostgreSQL's logical replication uses a Write-Ahead Log (WAL) with LSN (Log Sequence Number) offsets. Changes are stored with monotonic identifiers. Clients track their position and request changes since their last checkpoint.
-
-```sql
--- Simplified replication table pattern
-CREATE TABLE replication_log (
-    lsn BIGSERIAL PRIMARY KEY,
-    table_name TEXT,
-    operation TEXT,  -- INSERT, UPDATE, DELETE
-    row_data JSONB,
-    timestamp TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Client sync query
-SELECT * FROM replication_log 
-WHERE lsn > $client_last_lsn 
-ORDER BY lsn;
-```
-
-This pattern is elegant:
-1. **Replication table** - Stores changes with sequential identifiers
-2. **Checkpoint-based sync** - Clients track position, request changes since checkpoint
-3. **Time-ordered index** - Enables efficient incremental sync
-
-The insight was: **adapt this pattern for Convex and add CRDTs for conflict resolution**. Don't try to bring all of Postgres's constraint semantics—just bring the replication table pattern.
+Buried in ElectricSQL's legacy architecture was the key insight I needed: **the replication table pattern**—PostgreSQL's WAL + LSN approach adapted for sync. This pattern would become the cornerstone of Replicate's architecture, which I'll explain in detail later.
 
 While I liked Electric's streaming architecture, I didn't like the HTTP request experience. I wanted a clean WebSocket experience for an instant-feeling application. Convex already provides that.
 
@@ -368,10 +343,6 @@ PostgreSQL has had logical replication for decades. At its core is a simple patt
 3. **Replication Slots** - Clients track their position in the log
 4. **Incremental Sync** - Clients request changes since their last position
 
-ElectricSQL's legacy architecture (2022-2024) was built directly on this pattern. They created Vaxine, a Rich-CRDT database that extended PostgreSQL's logical replication with CRDT conflict resolution. The architecture used "shadow tables"—replication tables that tracked changes flowing between Postgres and client SQLite databases.
-
-When ElectricSQL announced their July 2024 rewrite ("Electric Next"), they simplified away from the CRDT-native approach. But the replication table pattern they'd proven was sound.
-
 ## The Cornerstone Commit
 
 That first commit on October 24th became the cornerstone of the entire architecture:
@@ -415,55 +386,6 @@ So why "Replicate"?
 We took the battle-tested pattern that powers PostgreSQL logical replication, that ElectricSQL proved worked for local-first sync, and built it as a Convex component. The progression from that cornerstone commit is the story of refining this philosophy—making the replication table pattern work beautifully with CRDTs in the Convex ecosystem.
 
 It's a tribute to the database engineers who figured this out decades ago. We're just standing on their shoulders, adding CRDTs on top.
-
-## The Architecture: Replication Table + CRDTs
-
-The Convex guide showed me how to use Automerge. ElectricSQL showed me the replication table pattern. The breakthrough was combining them.
-
-Here's what I built: **a Postgres-style replication table that stores CRDT bytes instead of row changes**.
-
-The pattern has three layers:
-
-**1. Replication Table (Component)** - CRDT bytes with timestamp index
-- Stores documents as opaque binary data
-- Timestamp index enables checkpoint-based sync
-- Server never parses CRDT bytes, just stores and serves them
-
-**2. Main Application Tables** - Materialized documents for queries
-- Stores the same documents as regular Convex rows
-- Enables queries, joins, indexes, server-side logic
-- Server understands the structure and can use it
-
-**3. Client Store** - CRDT documents with local persistence
-- Manages CRDTs locally
-- Tracks unreplicated changes
-- Merges incoming CRDT bytes automatically
-
-Why both storage layers? It's like event sourcing:
-- **Replication table** = Event log (CRDT bytes for conflict resolution)
-- **Main tables** = Read model (materialized docs for efficient queries)
-
-```mermaid
-flowchart TB
-    subgraph CLIENT["Client"]
-        STORE[CRDT Document Store]
-        TANSTACK[TanStack DB<br/>Query Cache]
-        LOCAL[(Local Storage)]
-    end
-
-    subgraph SERVER["Convex Backend"]
-        COMPONENT[(Replication Table<br/>CRDT bytes + timestamp)]
-        MAIN[(Main Tables<br/>Materialized documents)]
-    end
-
-    STORE <--> TANSTACK
-    STORE <--> LOCAL
-    STORE -->|"sync CRDT bytes"| COMPONENT
-    COMPONENT --> MAIN
-    MAIN -->|"subscription"| TANSTACK
-```
-
-This is why it's called "Replicate"—we replicated the Postgres replication pattern in Convex, with CRDTs added.
 
 ---
 
@@ -1671,41 +1593,6 @@ Replicate is in production at Trestle, powering Ledger's offline-first forms. Bu
 The local-first revolution isn't coming. It's here. And if you're building collaborative software without offline-first architecture, you're already behind.
 
 Welcome to the new standard.
-
----
-
-# Appendix: Technical Reference
-
-## Convex Runtime Limits (as of 2024)
-
-| Resource | Convex Runtime | Node.js Runtime |
-|----------|---------------|-----------------|
-| Memory | 64 MiB | 512 MiB |
-| Query/Mutation Time | 1 second | 1 second |
-| Action Time | 10 minutes | 10 minutes |
-| Code Size | 32 MiB/deployment | 32 MiB/deployment |
-| Concurrent Queries | 16 (Free), 256 (Pro) | - |
-| Concurrent Mutations | 16 (Free), 256 (Pro) | - |
-
-## CRDT Library Comparison
-
-| Library | Implementation | Bundle Size | Best For |
-|---------|---------------|-------------|----------|
-| Yjs | Pure JavaScript | ~30KB min | General purpose, wide ecosystem |
-| Loro | Rust + WASM | ~500KB+ | Advanced algorithms (Fugue, Peritext) |
-| Automerge | Rust + WASM | ~400KB+ | JSON-like documents |
-| Diamond-types | Rust + WASM | ~300KB+ | Text editing specifically |
-
-## Benchmark Data (Automerge Paper Dataset)
-
-259,778 operations (182,315 insertions, 77,463 deletions):
-
-| Library | Snapshot | Compressed | With GC |
-|---------|----------|------------|---------|
-| Yjs | 227 KB | 91 KB | 72 KB |
-| Loro | 273 KB | 132 KB | N/A |
-| Loro Shallow | 63 KB | 54 KB | - |
-| Automerge | 293 KB | 129 KB | N/A |
 
 ---
 
