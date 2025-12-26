@@ -7,7 +7,7 @@ tags:
   - sveltekit
   - convex
   - typst
-publishDate: 2024-12-15
+publishDate: 2025-12-15
 published: true
 category: technical
 ---

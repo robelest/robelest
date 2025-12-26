@@ -8,7 +8,7 @@ tags:
   - service-worker
   - workbox
   - offline-first
-publishDate: 2024-12-19
+publishDate: 2025-12-19
 published: true
 category: technical
 ---

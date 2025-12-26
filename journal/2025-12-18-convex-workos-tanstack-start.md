@@ -8,7 +8,7 @@ tags:
   - workos
   - tanstack-start
   - react
-publishDate: 2024-12-18
+publishDate: 2025-12-18
 published: true
 category: technical
 ---

@@ -11,7 +11,7 @@ tags:
   - convex-component
   - engineering
   - local-first
-publishDate: 2024-12-17
+publishDate: 2025-12-25
 published: true
 category: technical
 ---
@@ -71,6 +71,8 @@ The local-first ideals weren't academic principles for us—they were product re
 
 # Understanding the Problem Space
 
+Before diving into what I built and why, it's worth understanding the conceptual distinction that took me months to learn.
+
 ## Sync Engines vs Local-First
 
 The terms "sync engine" and "local-first" get thrown around interchangeably, but they're not the same thing at all.
@@ -128,15 +130,27 @@ For our use case—structured documents in a collaborative environment with Reac
 
 ---
 
-# The Landscape Exploration
+# The Search for the Right Architecture
 
-Before writing a single line of code, I spent weeks understanding what I was actually building. The local-first space is littered with failed attempts and pivoted projects. I wanted to learn from them.
+Before I understood the theory I just explained, I learned it the hard way—by building the wrong thing, studying why others had failed, and slowly piecing together what actually works.
 
-## ElectricSQL: The Rich-CRDT Pioneers
+## My First Experiment: TanStack DB + Convex
 
-ElectricSQL caught my attention because they'd been through the full evolution of local-first architecture. They had two distinct approaches, and understanding both taught me crucial lessons about scope and complexity.
+When TanStack DB first released, I immediately saw the potential. They had a WebSocket example showing a clean push-pull model for optimistic updates. I built a prototype integrating TanStack DB's reactive collections with Convex's subscriptions.
 
-### The Legacy Architecture: Vaxine and Rich-CRDTs (2022-2024)
+It worked beautifully. Convex's reactive queries fed into TanStack DB's local state. Optimistic mutations felt instant. The UI updated in real-time across tabs. This was the buttery-smooth experience Francis wanted.
+
+Then I took my laptop offline. Made some changes. Came back online.
+
+The data was gone.
+
+This was my first real lesson: **I had built a sync engine, not a local-first app**. TanStack DB + Convex gave us excellent real-time sync—reactive, optimistic, fast. What it didn't give us was persistence through offline periods, or any way to handle conflicts when multiple clients diverged.
+
+## Learning from ElectricSQL's Journey
+
+That failure sent me researching. ElectricSQL caught my attention because they'd been through the full evolution of local-first architecture—and had recently pivoted dramatically. Understanding why taught me crucial lessons.
+
+### The Ambitious Original Vision: Rich-CRDTs (2022-2024)
 
 ElectricSQL's original vision was ambitious: bring the full power of PostgreSQL to the client with automatic conflict resolution. They built on **Vaxine**, a Rich-CRDT database based on **AntidoteDB**—an Erlang-based, planet-scale transactional database built on CRDT technology.
 
@@ -208,13 +222,27 @@ The reasons were instructive:
 
 James Arthur (ElectricSQL CEO) wrote candidly about the pivot: the original architecture tried to solve too many problems at once. The new architecture focused on one thing—efficient data streaming from Postgres to clients—and let developers handle conflict resolution in application code.
 
+### My Experiment with Electric Next
+
+Armed with this knowledge, I tried ElectricSQL's new architecture. The DX was impressive—define your schema in Postgres, Electric syncs it to clients automatically. I integrated it with TanStack DB.
+
+Same result as my first experiment. Great sync. No conflict resolution.
+
+Their new architecture explicitly avoided the hard problem:
+
+> "We provide the sync. You bring the conflict resolution strategy."
+
+For simple last-write-wins scenarios, this works. For case workers editing the same intake form from unreliable field locations, silently dropping changes wasn't acceptable.
+
 ### The Insight I Kept
 
-Buried in ElectricSQL's legacy architecture was the key insight I needed: **the replication table pattern**—PostgreSQL's WAL + LSN approach adapted for sync. This pattern would become the cornerstone of Replicate's architecture, which I'll explain in detail later.
+But buried in ElectricSQL's legacy architecture was the key insight I needed: **the replication table pattern**—PostgreSQL's WAL + LSN approach adapted for sync. This pattern would become the cornerstone of Replicate's architecture.
 
 While I liked Electric's streaming architecture, I didn't like the HTTP request experience. I wanted a clean WebSocket experience for an instant-feeling application. Convex already provides that.
 
-## PowerSync: Production-Ready but Painful
+## Evaluating Other Players
+
+### PowerSync: Production-Ready but Painful
 
 PowerSync was the other major player I evaluated. Production-ready, established companies using it at scale, PostgreSQL logical replication to SQLite on every device.
 
@@ -222,7 +250,7 @@ But the developer experience was frustrating. Their authentication model require
 
 The lesson: production-readiness doesn't mean production-pleasant.
 
-## Zero by Rocicorp
+### Zero by Rocicorp
 
 Zero deserves special mention. Aaron Boodman and the Rocicorp team have been thinking about sync engines longer than almost anyone. Their thesis is compelling: put a sync engine in front of your database and distribute your backend all the way to the main thread of the UI.
 
@@ -230,7 +258,21 @@ Their architecture is elegant—hybrid queries that span client and server, auto
 
 From Zero, I learned that the user experience problem and the developer implementation problem are two sides of the same coin. Users expect instant, offline-capable, conflict-free software because that's what native apps trained them to expect. Developers struggle to build it because the primitives are scattered across different libraries and paradigms.
 
-## The Exploration's Conclusion
+## The Community Signal
+
+Throughout this exploration, I was watching the community closely.
+
+**LocalFirst.fm** (the podcast and community channels) revealed a pattern: developers wanted batteries-included solutions but kept hitting walls. Replicache had excellent DX but significant vendor lock-in. PowerSync was great for mobile but tightly coupled to their backend. RxDB was open source but required a hundred configuration decisions before you could build anything.
+
+**Convex's community** kept asking for local-first. Discord threads about offline support. AMA questions about conflict resolution. GitHub issues proposing offline-capable patterns like [hash-based conditional query fetching](https://github.com/get-convex/convex-backend/issues/146) to support locally cached data.
+
+Then came Convex's Series B announcement in November 2025. Jamie Turner laid out three major features on their roadmap:
+
+> "We aim to ship a **Convex-flavored take on local-first** that will feel as intuitive and ergonomic as the rest of our product."
+
+Local-first was one of three headline features for their $24M raise. The demand was real. The gap was real.
+
+## What I Needed to Build
 
 By the end of my research, I had clarity:
 
@@ -247,9 +289,17 @@ The question was: how do we combine these without the complexity that killed Ele
 
 In mid-September, I started this repository with what seemed like a brilliant idea: be unopinionated.
 
-## The "Flexibility" Philosophy
+## Why RxDB? The TanStack Collection Provider
 
-RxDB is a popular local-first database for JavaScript. It's designed to work with multiple storage backends, multiple sync protocols, and multiple conflict resolution strategies. The idea is beautiful: let developers choose what works for their use case.
+RxDB is a popular local-first database for JavaScript, and crucially, it's a **TanStack collection provider**. This meant I could potentially get the integration I wanted:
+
+```
+TanStack DB → RxDB → Convex
+```
+
+TanStack DB for the reactive query interface. RxDB for local persistence and conflict resolution. Convex for the sync transport. Three layers, each doing what it's best at.
+
+RxDB's philosophy is flexibility: multiple storage backends, multiple sync protocols, multiple conflict resolution strategies. Let developers choose what works for their use case.
 
 My thinking was:
 - Use RxDB for local storage and conflict resolution flexibility
@@ -258,6 +308,19 @@ My thinking was:
 - Let developers plug in their own conflict resolution if they want
 
 This would be the Swiss Army knife of sync solutions. Flexible, powerful, unopinionated.
+
+## The Anti-Pattern: Two Databases Fighting for Authority
+
+What I didn't realize: **RxDB is meant to BE the backend, not work WITH another backend.**
+
+The architecture I was building had a fundamental flaw. RxDB and Convex both wanted to own the data layer. RxDB expected to be the source of truth with its own persistence and sync. Convex expected to be the source of truth with its reactive subscriptions and mutations.
+
+Putting them together meant:
+- Extra reads: RxDB reading from IndexedDB, then Convex reading from its tables
+- Extra writes: Changes going to RxDB first, then syncing to Convex, then Convex syncing back
+- Broken sync: Convex's default reactive sync was now competing with RxDB's replication protocol
+
+I was breaking Convex's elegant sync model by shoving another database layer in the middle.
 
 ## 34 Commits of Fighting Reality
 
@@ -296,18 +359,36 @@ RxDB was solving a problem we didn't have (supporting multiple databases and syn
 
 On October 24th, I found the article that changed everything: "Automerge and Convex" on the Convex blog.
 
-## The Guide's Key Insights
+## The Key Insight: CRDT as Compute Layer, Not Database
 
-The article proposed a hybrid approach:
+The RxDB experiment failed because I was thinking about it wrong. RxDB is a **database** that happens to support CRDTs. It has opinions about storage, sync, and data ownership. Those opinions conflicted with Convex's opinions.
+
+But Automerge, used correctly, isn't a database at all. **It's a compute layer.**
+
+The article showed me the right architecture:
+
+```
+TanStack DB → Convex (with Automerge as pure merge logic)
+```
+
+Not three layers fighting for control. Just two:
+- **TanStack DB + Convex**: Handle all the data management, persistence, sync, and reactivity
+- **Automerge**: Just do the CRDT math when conflicts need merging
+
+Automerge doesn't want to own your data. It doesn't have opinions about storage backends or sync protocols. It just takes two divergent states and produces a merged result. That's it. **Pure computation, no database opinions.**
+
+## The Guide's Architecture
+
+The Convex blog article proposed:
 
 **1. Automerge CRDTs for conflict-free merging**
-Instead of trying to be flexible about conflict resolution, just use Automerge. It works. It has IndexedDB support. It's production-ready.
+Instead of trying to be flexible about conflict resolution, just use Automerge. It works. It's production-ready. And critically—it doesn't try to own your data layer.
 
-**2. Convex for reactive sync**
-Convex already handles the sync engine layer. Real-time WebSocket subscriptions, automatic reconnection, optimistic updates. Don't reinvent this.
+**2. Convex for everything else**
+Convex handles the sync engine layer. Real-time WebSocket subscriptions, automatic reconnection, optimistic updates. Storage. Persistence. Don't reinvent any of this.
 
 **3. Store CRDT bytes on the server**
-The critical insight: store Automerge documents as binary blobs in Convex. The server doesn't need to understand CRDTs. It just stores and serves bytes.
+Store Automerge documents as binary blobs in Convex. The server doesn't need to understand CRDTs. It just stores and serves bytes. The merge computation happens client-side.
 
 **4. Hybrid storage**
 Not all data needs CRDTs. Use them for collaborative documents. Use regular Convex tables for everything else.
@@ -487,169 +568,9 @@ Instead of sending the full document on every sync, we send: "Here's what I've s
 
 ---
 
-# The Loro Tangent: When Faster Isn't Better
+# The Loro Tangent: When Context Matters More Than Speed
 
-While working on Yjs integration, I discovered Loro—a newer CRDT library with some genuinely impressive properties. This became a multi-week exploration that, while ultimately not shipping to main, taught us important lessons about choosing the right tool.
-
-## What Makes Loro Special
-
-Loro implements several cutting-edge CRDT algorithms that address real problems with older approaches. Understanding these algorithms deeply influenced our thinking, even though we didn't ship Loro.
-
-### The Fugue Algorithm: Solving Text Interleaving
-
-Traditional list CRDTs (including early versions of Yjs) suffer from an "interleaving anomaly." This is a fundamental problem in collaborative text editing that wasn't fully solved until 2023.
-
-**The Problem:**
-
-When two users concurrently type at the same position, their text can become interleaved character-by-character:
-
-```
-Initial state: "Hello|World" (cursor at |)
-
-User A types: "ABC"
-User B types: "123"
-
-Bad merge result: "H1A2B3CelloWorld"  // Interleaved!
-Expected result: "HelloABC123World" or "Hello123ABCWorld"
-```
-
-This happens because older CRDTs assign each character a unique ID based on its parent character. When both users insert after the same parent, the merge algorithm alternates between them.
-
-**The Fugue Solution:**
-
-The Fugue paper ("The Art of the Fugue: Minimizing Interleaving in Collaborative Text Editing," arXiv:2305.00583) by Matthew Weidner, Joseph Gentle, and Martin Kleppmann introduced a new approach.
-
-Instead of just tracking parent relationships, Fugue tracks "side" information—whether an insertion is to the left or right of its origin point. This creates a tree structure that preserves contiguous runs of text:
-
-```
-Traditional CRDT tree:
-    H -> e -> l -> l -> o -> [insertion point]
-                              ├── A (User A)
-                              ├── B (User A)  
-                              ├── C (User A)
-                              ├── 1 (User B)
-                              ├── 2 (User B)
-                              └── 3 (User B)
-    
-    Merge order depends on IDs, may interleave
-
-Fugue tree with side information:
-    H -> e -> l -> l -> o -> [insertion point]
-                              ├── (RIGHT) A -> B -> C (User A's run)
-                              └── (RIGHT) 1 -> 2 -> 3 (User B's run)
-    
-    Merge preserves runs: "ABC" stays together, "123" stays together
-```
-
-The mathematical property is called **"maximal non-interleaving"**: concurrent insertions at the same position will never interleave character-by-character. They'll stay as contiguous blocks. One user's text comes before or after the other's, but never mixed.
-
-### Peritext: Rich Text Formatting Done Right
-
-Text is one thing. **Rich** text—with bold, italic, links, headings—is another. Peritext (from Ink & Switch) solves the problem of merging concurrent formatting changes.
-
-**The Problem:**
-
-```
-Initial: "Hello World" (no formatting)
-
-User A: Makes "Hello" bold
-User B: Makes "World" italic
-
-Expected: "**Hello** *World*"
-
-But what about:
-User A: Makes "Hello Wo" bold
-User B: Makes "llo World" italic
-
-Expected: "**He**" + "***llo Wo***" + "*rld*"  // Overlapping formatting
-```
-
-Peritext introduces the concept of **format spans** with explicit boundaries. Each formatting mark has:
-- A start position (before or after a character)
-- An end position (before or after a character)
-- The formatting type and value
-
-When formats overlap, Peritext's merge rules preserve user intent:
-- If two users apply the same format, it merges naturally
-- If two users apply conflicting formats (bold vs. not-bold), there are clear rules for which wins
-- Overlapping ranges are handled without corruption
-
-Loro combines Fugue (for text) with Peritext (for formatting), giving it excellent collaborative rich text properties.
-
-### Movable Trees and Fractional Indexing
-
-Loro also implements movable tree CRDTs based on Martin Kleppmann's research. Moving a subtree in a hierarchy is notoriously hard in distributed systems.
-
-**The Problem:**
-
-```
-Initial tree:
-Root
-├── A
-│   └── B
-└── C
-
-User 1: Moves B under C
-User 2: Moves C under A
-
-Result after naive merge:
-Root
-├── A
-│   └── C      // Wait, C is under A now
-│       └── B  // And B is under C
-└── (C moved)  // But C was also moved under A?
-
-This creates a cycle! A -> C -> B, but C -> A
-```
-
-Loro's movable tree CRDT uses timestamps and parent pointers to detect and resolve cycles. When a cycle would be created, the later move "wins" and the earlier move is effectively undone.
-
-**Fractional Indexing for Siblings:**
-
-Within a tree level, you need to order siblings. Traditional integer positions cause conflicts:
-
-```
-Siblings: [A at 0, B at 1, C at 2]
-
-User 1: Insert X at position 1
-User 2: Insert Y at position 1
-
-Both now claim position 1. Who wins?
-```
-
-Fractional indexing solves this by creating positions between existing positions:
-
-```
-Initial: [A at 0.0, B at 1.0, C at 2.0]
-
-User 1: Insert X between A and B → X at 0.5
-User 2: Insert Y between A and B → Y at 0.25
-
-Result: [A at 0.0, Y at 0.25, X at 0.5, B at 1.0, C at 2.0]
-No conflict!
-```
-
-The math uses arbitrary-precision decimals (or special encodings) to always find a value between any two existing values. This is similar to how Google Docs handles paragraph ordering.
-
-### The Performance Numbers
-
-Loro's benchmarks are impressive. On the Automerge paper dataset (182,315 insertions, 77,463 deletions):
-
-| Library | Snapshot Size | Update Size |
-|---------|--------------|-------------|
-| Loro | 273KB | 251KB |
-| Yjs (Yrs) | 227KB | - |
-| Diamond-types | 281KB | - |
-| Automerge | 293KB | - |
-
-With shallow snapshots (truncating history like Git's shallow clone), Loro achieves:
-
-| Settings | Size |
-|----------|------|
-| Default | 63 KB |
-| With compression | 54 KB |
-
-That 54KB is smaller than anything else—at the cost of losing history.
+While working on Yjs integration, I discovered Loro—a newer CRDT library with impressive benchmarks and cutting-edge algorithms (Fugue for text, Peritext for rich formatting). This became a multi-week exploration that taught us critical lessons about choosing tools for the right context.
 
 ## The loro Branch
 
@@ -660,64 +581,90 @@ I created a branch to explore Loro integration:
 4109978: "refactor: migrate collection layer from Yjs to Loro"
 aeb9e76: "refactor: migrate persistence layer to store Loro snapshots directly"
 894db9f: "refactor: complete platform-specific entry points for Loro migration"
-39e148b: "refactor: update example apps for Loro migration"
 ```
 
-The migration was architecturally clean—we'd designed the component to be byte-agnostic, so swapping CRDT libraries was mostly a matter of changing the client-side serialization.
+We built a complete adapter layer abstracting Loro's WASM and native implementations:
+
+```typescript
+// From loro/adapter.ts - abstracting the CRDT implementation
+export interface LoroAdapter {
+  createDoc(peerId?: string): LoroDocHandle;
+  import(doc: LoroDocHandle, bytes: Uint8Array): void;
+  export(doc: LoroDocHandle, mode: ExportMode): Uint8Array;
+  
+  // Key difference: Loro uses "frontiers" not "stateVector"
+  getFrontiers(doc: LoroDocHandle): Frontiers;
+  encodeFrontiers(frontiers: Frontiers): Uint8Array;
+  // ...
+}
+```
 
 ## Why We Didn't Ship It
 
-After getting Loro working, I had to confront an uncomfortable truth: **the theoretical performance advantages don't matter for our use case**.
+After getting Loro working, three hard-earned lessons emerged:
 
-Here's why:
+### 1. Frontiers vs State Vectors: A Fundamental Mismatch
 
-**1. WASM in the Browser**
+Loro uses **frontiers** for sync, not **state vectors** like Yjs. This sounds like a minor detail—both represent "what changes have I seen?"—but the implications for server-side operations are profound.
 
-Loro is written in Rust and compiled to WASM. While Rust is faster than JavaScript for CRDT operations, WASM has overhead:
-- Initial loading and parsing of the WASM module (~100-200ms on slow devices)
-- Serialization costs crossing the JS/WASM boundary (every operation pays)
-- Can't be tree-shaken; you pay for the entire WASM binary
+```typescript
+// Yjs: Server can merge and validate state vectors
+const serverVector = Y.encodeStateVectorFromUpdateV2(mergedState);
+const diff = Y.diffUpdateV2(mergedState, clientVector);
 
-For a sync library that runs on every page load, these costs add up. Yjs, being pure JavaScript, starts instantly and integrates seamlessly with bundlers.
+// Loro: Frontiers are opaque bytes the server can't interpret
+// From loro:src/component/schema.ts
+snapshots: defineTable({
+  frontiers: v.bytes(),  // Server stores but can't merge these
+})
+```
 
-**2. WASM in Convex**
+With Yjs, the Convex component can merge updates server-side, validate consistency, and compute diffs. With Loro, the server becomes a dumb byte store—it can't participate in CRDT operations because Loro's Rust implementation isn't available in the Convex runtime.
 
-More critically, running Loro in Convex functions would mean loading a WASM image into the Convex runtime on every function call. With:
-- 64 MiB RAM limit for Convex runtime
-- Cold start on every new function instance
-- $0.30/GiB-hour for action execution
+This breaks the service-authoritative model we needed.
 
-The compute costs would be significant—and we'd be paying those costs for operations the server doesn't even need to perform (it just stores bytes).
+### 2. Speed in the Wrong Context
 
-**3. Bundle Size Reality**
+Loro's benchmarks are impressive—Fugue's non-interleaving guarantees and Peritext's rich text merging are genuinely innovative. But these benefits shine in:
+- **Rust-native applications** where you're not crossing WASM boundaries
+- **Peer-to-peer architectures** where there's no central server
+- **Rich text editors** with complex formatting requirements
 
-Loro's WASM bundle adds more weight than Yjs's JavaScript bundle:
-- Loro WASM: ~500KB+ (varies by features)
-- Yjs: ~30KB minified core
+Our architecture is different:
+- **JavaScript clients** crossing WASM boundaries on every operation
+- **Service-authoritative** with Convex as the source of truth
+- **Structured documents** (forms, records) not rich text editors
 
-For mobile web users on slow connections, this difference is noticeable.
+The overhead of WASM serialization on every operation negated Loro's speed advantages. Yjs, being pure JavaScript, integrates seamlessly without boundary-crossing costs.
 
-**4. Ecosystem Maturity**
+### 3. Compaction Complexity
 
-Yjs has years of production use, extensive documentation, and a rich ecosystem of bindings:
-- ProseMirror/TipTap for rich text
-- Monaco for code editing
-- Quill for WYSIWYG
-- y-indexeddb, y-websocket, y-webrtc for persistence and transport
+The compaction story revealed the deepest mismatch. Compare the schemas:
 
-Loro is newer and, while promising, doesn't have the same integration story. When something breaks, there are fewer Stack Overflow answers and GitHub issues to reference.
+```typescript
+// Yjs (cursor branch): Server can work with stateVector
+snapshots: defineTable({
+  stateVector: v.bytes(),   // Server can use this for recovery sync
+  snapshotBytes: v.bytes(),
+})
 
-## What We Learned from Loro
+// Loro: Server stores opaque frontiers
+snapshots: defineTable({
+  frontiers: v.bytes(),     // Server can't interpret this
+  bytes: v.bytes(),
+})
+```
 
-The Loro exploration wasn't wasted. We learned:
+With Yjs, when a client reconnects after being offline, the server can compute exactly what updates the client is missing using state vector diffing. With Loro, the server has to send everything since the last snapshot—it can't compute a diff because frontiers are opaque.
 
-**Peer-Checking Compaction**: Loro's approach to garbage collection considers which peers have acknowledged which operations. This is more sophisticated than simple retention-date compaction, giving stronger consistency guarantees. We incorporated this thinking into our own compaction strategy.
+## The Lesson
 
-**Client-Side Authoritative Compaction Fails**: With Loro, we explored having clients drive compaction decisions. This doesn't work well with Convex's model—function calls have compute costs, and client-side authority for storage decisions creates consistency challenges. Server-side compaction (with client hints) is the right pattern.
+Loro is an excellent library—for the right context. Its algorithms represent real advances in CRDT theory. But **context matters more than speed**:
 
-**Algorithm-Aware Trade-offs**: Not all CRDTs are equal. Fugue's non-interleaving guarantee is genuinely important for text editing. If we add collaborative rich-text editing as a first-class feature (not just synced documents), we might revisit Loro.
+- If you're building a Rust-native collaborative editor: Loro is probably the right choice
+- If you're building a JavaScript service-authoritative sync layer: Yjs wins on integration, not benchmarks
 
-The `loro` branch remains in the repository as a technical curiosity and a reminder that faster benchmarks don't always mean better products.
+The `loro` branch remains in the repository as a reminder that choosing tools requires understanding your architecture's constraints, not just reading benchmark numbers.
 
 ---
 
@@ -841,78 +788,146 @@ The consolidation reduced confusion (one package to install, one version to trac
 
 # The API Evolution: From Boilerplate to Elegance
 
-One of the less visible but most important aspects of the project was the API design journey. Early versions required developers to understand Convex's type system, component internals, and the CRDT layer. By version 1.1.0, the surface area had shrunk dramatically.
+One of the less visible but most important aspects of the project was the API design journey. The API went through four distinct phases, each teaching us something about developer experience.
 
-## The Early Days: Type System Gymnastics
+## Phase 1: The Automerge Era (Direct Component Calls)
 
-The original API required significant boilerplate:
+In the earliest Automerge implementation, there was no server-side wrapper at all. Developers called the component's mutations directly:
 
 ```typescript
-// Early version: lots of manual wiring
-import { replicate } from "@trestleinc/replicate/server";
-import { components, internal } from "./_generated/api";
-import { DataModel } from "./_generated/dataModel";
+// Automerge era: direct component mutations
+// packages/storage/src/component/public.ts
 
-// User had to understand the type system
-const r = replicate<DataModel>(components.replicate, internal);
+export const submitSnapshot = mutation({
+  args: {
+    collectionName: v.string(),
+    documentId: v.string(),
+    data: v.bytes(),
+  },
+  handler: async (ctx, args) => {
+    // Hash-based deduplication
+    const hash = generateHash(args.data);
+    // ... store in documents table
+  },
+});
 
-// Explicit function exports
-export const stream = r.stream("tasks");
-export const material = r.material("tasks");
-export const insert = r.insert("tasks");
-export const update = r.update("tasks");
-export const remove = r.remove("tasks");
-export const versions = r.versions("tasks");
-
-// Then wire up compaction manually
-export const compact = r.compact("tasks", { threshold: 5_000_000 });
+export const submitChange = mutation({ /* similar */ });
+export const submitBatch = mutation({ /* batch operations */ });
+export const pullChanges = query({ /* checkpoint-based sync */ });
+export const changeStream = query({ /* reactive stream metadata */ });
 ```
 
-This worked, but required developers to:
-- Import from `_generated` (internal knowledge)
-- Understand the type parameter threading
-- Export each function individually
-- Configure compaction separately
-
-## The Factory Pattern: Simpler Configuration
-
-We moved to a factory pattern with destructuring:
+The client used a `SyncAdapter` class:
 
 ```typescript
-// Factory pattern: single configuration object
+// Client-side adapter class
+export class SyncAdapter<T extends { id: string }> {
+  async start(): Promise<void> {
+    await this.pull();
+    this.pushInterval = setInterval(() => void this.push(), 5000);
+    this.unsubscribe = this.client.onUpdate(
+      this.api.changeStream,
+      { collectionName: this.collectionName },
+      () => void this.pull()
+    );
+  }
+
+  stop(): void {
+    if (this.pushInterval) clearInterval(this.pushInterval);
+    if (this.unsubscribe) this.unsubscribe();
+  }
+
+  private async push(): Promise<void> {
+    const dirty = this.store.getDirty();
+    await this.client.mutation(this.api.submitBatch, { operations: dirty });
+  }
+}
+```
+
+This worked, but developers had to:
+- Understand the component's internal mutations
+- Manage the sync adapter lifecycle manually
+- Handle checkpoint tracking themselves
+- Wire up push/pull logic
+
+## Phase 2: The Yjs Rewrite (Helper Functions)
+
+After migrating to Yjs, we introduced server-side helper functions:
+
+```typescript
+// Yjs era: helper functions
+// packages/replicate/src/component/public.ts
+
+export const insertDocument = mutation({
+  args: {
+    collectionName: v.string(),
+    documentId: v.string(),
+    crdtBytes: v.bytes(),
+    version: v.number(),
+  },
+  handler: async (ctx, args) => { /* ... */ },
+});
+
+export const updateDocument = mutation({ /* ... */ });
+export const deleteDocument = mutation({ /* ... */ });
+export const stream = query({ /* incremental sync */ });
+```
+
+And server helpers to call them:
+
+```typescript
+// Server helpers for user code
+export {
+  insertDocumentHelper,
+  updateDocumentHelper,
+  deleteDocumentHelper,
+  streamHelper,
+} from './replication.js';
+```
+
+Better—developers had cleaner primitives. But still verbose for common use cases.
+
+## Phase 3: The Factory Pattern
+
+The factory pattern unified configuration:
+
+```typescript
+// Factory pattern: bind once, reuse
+import { replicate } from '@trestleinc/replicate/server';
+import { components } from './_generated/api';
+
 const r = replicate(components.replicate);
 
-export const {
-  stream,
-  material,
-  insert,
-  update,
-  remove,
-  versions,
-} = r<Task>({
-  collection: "tasks",
-  compaction: { threshold: 5_000_000 },
+export const tasks = r<Task>({
+  collection: 'tasks',
+  compaction: { retention: 5_000_000 },
+  hooks: {
+    evalWrite: async (ctx, doc) => { /* authorization */ },
+    onInsert: async (ctx, doc) => { /* side effects */ },
+  },
 });
+
+// Returns: { stream, material, insert, update, remove, versions, compact, ... }
 ```
 
 ```
 704b549: "refactor: simplify server API to factory pattern with replicate()"
 ```
 
-This was better—one function call, destructured exports. But it still felt verbose.
+One function call, one configuration object, all operations returned.
 
-## The Nested Object Pattern
+## Phase 4: Nested Object Pattern
 
-We explored returning nested objects:
+We refined the exports for better discoverability:
 
 ```typescript
-// Nested objects: grouped by concern
-export const tasks = replicate(components.replicate)<Task>({
-  collection: "tasks",
-  compaction: { threshold: 5_000_000 },
-});
+// Nested exports for cleaner imports
+export { replicate } from '$/server/builder.js';
 
-// Usage: api.tasks.stream, api.tasks.insert, etc.
+export const schema = {
+  table,
+  prose,
+} as const;
 ```
 
 ```
@@ -1262,39 +1277,33 @@ We built a swappable persistence layer:
 
 ```
 e2a236b: "refactor: add swappable persistence layer for React Native support"
-8d264e7: "feat: add universal SQLite persistence with auto-platform detection"
+f366136: "refactor: replace LevelDB with SQLite-only persistence"
 ```
 
-The persistence provider auto-detects the platform and uses the appropriate SQLite implementation:
+A key design decision: **persistence is explicitly configured, not auto-detected**. Auto-detection sounds convenient, but it adds complexity that doesn't belong in a sync library's boundaries. The developer knows their target platform—we shouldn't guess.
 
 ```typescript
-// Auto-detection logic
-function detectPlatform(): PersistenceProvider {
-  if (typeof window !== 'undefined') {
-    // Browser environment
-    if ('storage' in navigator && 'getDirectory' in navigator.storage) {
-      return new OPFSSQLiteProvider();  // Modern browsers with OPFS
-    }
-    return new WASMSQLiteProvider();    // Fallback to sql.js WASM
-  }
-  
-  if (isExpo()) {
-    return new ExpoSQLiteProvider();    // Expo with expo-sqlite
-  }
-  
-  if (isReactNative()) {
-    return new OpSQLiteProvider();      // Bare RN with op-sqlite
-  }
-  
-  return new BetterSQLiteProvider();    // Node.js with better-sqlite3
-}
+// Explicit configuration - developer chooses their backend
+import { persistence } from '@trestleinc/replicate/client';
 
-// Usage is identical across platforms
-const persistence = createPersistence({
-  database: "replicate",
-  // Platform auto-detected
-});
+// Browser: SQLite with OPFS (recommended for web)
+const p = await persistence.sqlite.browser(SQL, 'myapp');
+
+// React Native: Native SQLite bindings
+const p = await persistence.sqlite.native(db, 'myapp');
+
+// Browser fallback: IndexedDB
+const p = persistence.indexeddb('myapp');
+
+// Testing: In-memory
+const p = persistence.memory();
 ```
+
+This explicit approach has advantages:
+- **No magic**: Developers understand exactly what storage is being used
+- **Smaller bundles**: Only import the adapter you need
+- **Predictable behavior**: No runtime detection edge cases
+- **Clear errors**: If the wrong adapter is used, it fails fast with a clear message
 
 ## The Expo Example
 
@@ -1397,109 +1406,201 @@ sequenceDiagram
 
 **State vectors** enable efficient sync—only missing data is transferred, not the full document. Combined with cursor-based tracking, we get both efficiency and correctness.
 
-## Auto-Compaction
+## Auto-Compaction: The Hardest Problem We Solved
 
 Without compaction, event logs grow unbounded. Every keystroke becomes a delta. Over time, a document could have thousands of deltas just to represent a single paragraph.
 
-```mermaid
-flowchart LR
-    subgraph BEFORE["Before Compaction"]
-        D1[Delta 1]
-        D2[Delta 2]
-        D3[Delta 3]
-        D4[...]
-        DN[Delta N]
-    end
+But compaction is deceptively hard. The core question: **when can you safely delete deltas without orphaning a peer that hasn't synced yet?**
 
-    TRIGGER{All peers marked?<br/>Size > threshold?}
+This problem nearly broke us. Let me walk through the evolution.
 
-    subgraph AFTER["After Compaction"]
-        SNAP[Snapshot]
-    end
+### The Original Approach (Main Branch): Timestamp-Based, Size-Triggered
 
-    BEFORE --> TRIGGER
-    TRIGGER -->|yes| AFTER
-```
-
-### Compaction Strategies Compared
-
-We explored two approaches to compaction, informed by our Loro research:
-
-**Retention-Date Compaction (Simpler)**
-
-Delete deltas older than X days, regardless of peer acknowledgment.
+Our first implementation used timestamps and size thresholds:
 
 ```typescript
-// Retention-date approach
-const RETENTION_DAYS = 30;
-const cutoff = Date.now() - (RETENTION_DAYS * 24 * 60 * 60 * 1000);
-
-await ctx.db
-  .query("events")
-  .filter(q => q.lt(q.field("timestamp"), cutoff))
-  .collect()
-  .then(events => events.forEach(e => ctx.db.delete(e._id)));
+// main:src/component/schema.ts - The original schema
+documents: defineTable({
+  collection: v.string(),
+  documentId: v.string(),
+  crdtBytes: v.bytes(),
+  version: v.number(),
+  timestamp: v.number(),  // Problem: not monotonic!
+})
+  .index("by_timestamp", ["collection", "timestamp"])
 ```
 
-Pros:
-- Simple to implement
-- Predictable storage growth
-
-Cons:
-- **Can cause data loss** if a peer has been offline for more than the retention period
-- No way to recover those deltas
-
-**Peer-Checking Compaction (Our Approach)**
-
-Only delete deltas that ALL active peers have acknowledged.
+When a document's delta chain exceeded 5MB, we'd merge all deltas into a snapshot:
 
 ```typescript
-// Peer-checking approach
-const activePeers = await ctx.db
-  .query("peers")
-  .filter(q => q.gt(q.field("lastSeenAt"), activeCutoff))
+// Simplified auto-compaction logic
+const deltas = await ctx.db
+  .query("documents")
+  .withIndex("by_collection_document_version", ...)
   .collect();
 
-const minMarkedVersion = Math.min(
-  ...activePeers.map(p => p.lastMarkedVersion)
-);
+const totalSize = deltas.reduce((sum, d) => sum + d.crdtBytes.byteLength, 0);
 
-// Safe to compact: all active peers have seen these
-await ctx.db
-  .query("events")
-  .filter(q => q.lt(q.field("version"), minMarkedVersion))
-  .collect()
-  .then(events => mergeIntoSnapshot(events));
+if (totalSize > 5_000_000) {
+  // Merge deltas into snapshot
+  const compactedState = Y.mergeUpdatesV2(deltas.map(d => d.crdtBytes));
+  await ctx.db.insert("snapshots", { snapshotBytes: compactedState, ... });
+  
+  // Delete old deltas
+  for (const delta of deltas) {
+    await ctx.db.delete(delta._id);
+  }
+}
 ```
 
-Pros:
-- **Never loses data** that an active peer needs
-- Self-healing: inactive peers are ignored after a threshold
+**The fatal flaw**: We had no way to know if a client was still catching up. If Client A was offline for a week and came back, their cursor might point to deltas we'd already deleted.
 
-Cons:
-- One slow peer can block compaction for everyone
-- More complex state tracking
+### The Cursor Problem (Discovered via Convex Team)
 
-We chose peer-checking because data loss is unacceptable for our use case. A case worker who was offline for a month should still be able to sync without losing work.
+The timestamp approach had another subtle bug. Ian from Convex pointed out:
 
-### Why Client-Side Authoritative Compaction Fails
+> "Currently the 'check if there are new changes' uses the previous `_creationTime` as the cursor. Unfortunately, the previous query could have fetched results before an in-progress mutation commits..."
 
-During the Loro exploration, we considered having clients decide when to compact:
+In other words: **timestamps are not monotonic in MVCC systems**. Due to Convex's optimistic concurrency control, a mutation that starts earlier might commit later, creating gaps in the timestamp sequence.
+
+### The Solution (Cursor Branch): Peer-Tracking Compaction
+
+The `cursor` branch implements the correct approach with three key changes:
+
+**1. Monotonic Sequence Numbers**
+
+Replace timestamps with explicitly incremented sequence numbers:
 
 ```typescript
-// BAD: Client-side authoritative compaction
-// Client says: "I've processed everything, compact now!"
-await client.requestCompaction();
+// cursor:src/component/schema.ts - The new schema
+documents: defineTable({
+  collection: v.string(),
+  documentId: v.string(),
+  crdtBytes: v.bytes(),
+  seq: v.number(),  // Monotonically increasing within transaction
+})
+  .index("by_seq", ["collection", "seq"])
 ```
 
-This fails for several reasons:
+Each insert reads the current max seq and increments it atomically:
 
-1. **Race conditions**: Client A says "compact!" while Client B is mid-sync
-2. **Compute costs**: Every client request triggers Convex function execution
-3. **Trust issues**: Malicious client could request compaction to cause data loss
-4. **Coordination complexity**: Multiple clients need to agree
+```typescript
+async function getNextSeq(ctx, collection: string): Promise<number> {
+  const latest = await ctx.db
+    .query("documents")
+    .withIndex("by_seq", q => q.eq("collection", collection))
+    .order("desc")
+    .first();
+  return (latest?.seq ?? 0) + 1;
+}
+```
 
-Server-side compaction with client hints (via `mark`) is the right pattern. Clients report their progress; the server decides when compaction is safe.
+**2. Peer Progress Tracking**
+
+Track where each client has synced to:
+
+```typescript
+// cursor:src/component/schema.ts
+peers: defineTable({
+  collection: v.string(),
+  peerId: v.string(),
+  lastSyncedSeq: v.number(),  // "I've processed up to seq N"
+  lastSeenAt: v.number(),     // For stale peer detection
+})
+  .index("by_collection_peer", ["collection", "peerId"])
+```
+
+Clients call `mark` after processing deltas:
+
+```typescript
+// From cursor:src/component/public.ts
+export const mark = mutation({
+  args: {
+    collection: v.string(),
+    peerId: v.string(),
+    syncedSeq: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("peers")
+      .withIndex("by_collection_peer", ...)
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        lastSyncedSeq: Math.max(existing.lastSyncedSeq, args.syncedSeq),
+        lastSeenAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("peers", { ...args, lastSeenAt: Date.now() });
+    }
+  },
+});
+```
+
+**3. Safe Compaction Logic**
+
+Only delete deltas that ALL active peers have acknowledged:
+
+```typescript
+// From cursor:src/component/public.ts
+export const compact = mutation({
+  args: {
+    collection: v.string(),
+    documentId: v.string(),
+    snapshotBytes: v.bytes(),
+    stateVector: v.bytes(),
+    peerTimeout: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const peerTimeout = args.peerTimeout ?? 5 * 60 * 1000;
+    const peerCutoff = Date.now() - peerTimeout;
+
+    // Find all active peers (seen within timeout window)
+    const activePeers = await ctx.db
+      .query("peers")
+      .withIndex("by_collection", ...)
+      .filter(q => q.gt(q.field("lastSeenAt"), peerCutoff))
+      .collect();
+
+    // The minimum seq that ALL active peers have synced
+    const minSyncedSeq = activePeers.length > 0
+      ? Math.min(...activePeers.map(p => p.lastSyncedSeq))
+      : Infinity;
+
+    // Store snapshot with stateVector for recovery
+    await ctx.db.insert("snapshots", {
+      ...args,
+      snapshotSeq: currentMaxSeq,
+      createdAt: Date.now(),
+    });
+
+    // ONLY delete deltas that all active peers have confirmed
+    let removed = 0;
+    for (const delta of deltas) {
+      if (delta.seq < minSyncedSeq) {
+        await ctx.db.delete(delta._id);
+        removed++;
+      }
+    }
+
+    return { success: true, removed, retained: deltas.length - removed };
+  },
+});
+```
+
+### Why This Is Hard
+
+The compaction problem forces you to think about distributed systems failure modes:
+
+| Scenario | Old Approach (Timestamp) | New Approach (Peer-Tracking) |
+|----------|-------------------------|------------------------------|
+| Client offline 1 week | **Data loss** - deltas deleted | Safe - peer marked stale after timeout |
+| Concurrent mutations | **Gaps** - MVCC ordering issues | Safe - monotonic seq |
+| Slow client | **Blocked** - can't compact | Safe - stale detection |
+| Server restart | **Unknown state** | Safe - peer positions persisted |
+
+The key insight: **compaction is not a storage problem—it's a distributed consensus problem**. You need to know what every participant has seen before you can safely garbage collect.
 
 ---
 
@@ -1593,6 +1694,16 @@ Replicate is in production at Trestle, powering Ledger's offline-first forms. Bu
 The local-first revolution isn't coming. It's here. And if you're building collaborative software without offline-first architecture, you're already behind.
 
 Welcome to the new standard.
+
+---
+
+# A Note on Sponsorship
+
+After shipping 1.0.0, I met with Jamie Turner (Convex's CEO). The vision for Replicate aligned with what Convex wanted for their ecosystem—that "Convex-flavored take on local-first" they'd mentioned in the Series B announcement.
+
+Replicate became a sponsored project. Which is pretty cool.
+
+It means continued development, feedback from the Convex team, and a commitment to making this work at scale. The open-source local-first component that started as a nights-and-weekends experiment is now part of Convex's story.
 
 ---
 

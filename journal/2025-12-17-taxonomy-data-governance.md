@@ -9,7 +9,7 @@ tags:
   - ccpa
   - convex
   - convex-component
-publishDate: 2024-12-17
+publishDate: 2025-12-17
 published: true
 category: technical
 ---
