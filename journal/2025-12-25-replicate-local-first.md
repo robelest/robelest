@@ -1,7 +1,7 @@
 ---
-title: "Building Replicate: An Engineering Journey Through Local-First Sync"
+title: "Building Replicate"
 slug: replicate-local-first
-description: The story of building an offline-first sync engine for Convex—from RxDB experiments to Yjs CRDTs, the Loro exploration, and the cursor problem that nearly broke everything.
+description: The full, unvarnished story of building an offline-first sync engine for Convex—from RxDB experiments to Yjs CRDTs, the Loro exploration, and the cursor problem that nearly broke everything.
 tags:
   - replicate
   - offline-first
@@ -16,435 +16,347 @@ published: true
 category: technical
 ---
 
-# Building Replicate: An Engineering Journey Through Local-First Sync
+# An Engineering Post-Mortem
 
-Francis had been using Linear and Superhuman religiously, and he wanted our pre-launch product to have that same buttery-smooth, instant-everything feel. No spinners. No lag. Just pure speed.
+**[@Francis](https://x.com/freadbarth) had been spoiled.**
 
-The thing is, I'd never built a true sync engine for a web application. My only reference point was a Go CLI I'd written to sync markdown notes to my VPS. But with no users yet and a completely green field, we had the rare opportunity to get the architecture right from day one.
+He spent his days inside Linear and Superhuman—software that feels less like a tool and more like an extension of the nervous system. No spinners. No lag. Just buttery, instant state changes. When we started building Ledger, there was one prevailing philosophy  *"It has to feel like an extension of self"*
 
-Unfortunately, we didn't start on day one. Our core application, Ledger, was originally being built with Replicache for sync, but as our timelines sped up for investors and partners, sync had to be sacrificed for the v1 release. We shipped without it, knowing we'd need to come back to this problem.
-
-Francis's mandate was clear: when we do build sync, it needs to feel like Linear. Instant. Offline-capable. No compromises.
-
----
-
-# The Local-First Manifesto
-
-Before diving into the engineering, it's worth understanding why local-first matters—not just technically, but philosophically.
-
-In 2019, Ink & Switch published what has become the defining essay on local-first software. Their core observation: cloud apps like Google Docs and Trello are popular because they enable collaboration, but they take away ownership and agency from users. If a service shuts down, your data goes with it.
-
-They proposed seven ideals for local-first software:
-
-1. **No spinners** - Work happens instantly, on your device
-2. **Your work is not hostage to a server** - Data lives locally first
-3. **The network is optional** - Full functionality offline
-4. **Seamless collaboration** - Multiple users, no conflicts
-5. **The Long Now** - Your data outlives any company
-6. **Security and privacy by default** - You control access
-7. **You retain ownership** - Export, migrate, delete freely
-
-Reading this, I realized local-first isn't just a technical architecture—it's a user rights issue. And for Trestle, it's even more fundamental.
-
-## The Trestle Context
-
-At Trestle, we build software for human services organizations. Our users—case workers, intake specialists, field staff—often work in environments with unreliable connectivity:
-
-- **Shelters** with overloaded WiFi serving hundreds of people
-- **Client homes** in rural areas with no cellular coverage
-- **Community centers** with spotty public networks
-- **Field visits** to remote locations
-
-When a worker spends 30 minutes completing an intake form and hits "Save" only to see a network error, that's not just frustrating—it's potentially hours of lost work and a client who has to repeat their trauma. For vulnerable populations, being asked to tell their story twice isn't just inconvenient; it's re-traumatizing.
-
-This isn't hypothetical. We've heard these stories from our partners. Data that can't be lost. Forms that must work everywhere. Sync that happens when it can, not when you demand it.
-
-**We needed:**
-- Forms that save locally, always
-- Automatic sync when connectivity returns
-- No conflicts when multiple workers touch the same record
-- Complete audit trail for compliance
-
-The local-first ideals weren't academic principles for us—they were product requirements.
+To Francis's request,  I nodded. I'd written a Go CLI once to sync markdown notes to my VPS. How hard could a real-time sync engine be?
+This of course, was purely ignorance, But with no users yet and a completely green field, we had the rare opportunity to get the architecture right from day one. This is the story of how we built **Replicate**, an offline-first sync engine for Convex. It is a story of failed architectures, fighting against database physics, and learning why "time" in distributed systems is a lie.
 
 ---
 
-# Understanding the Problem Space
+## The Stakes: Why "Local-First" Isn't Just a Buzzword
 
-Before diving into what I built and why, it's worth understanding the conceptual distinction that took me months to learn.
+First, let's kill the idea that local-first is just a dev-twitter trend. For Trestle, it was survival.
 
-## Sync Engines vs Local-First
+We build software for social workers. These people are heroes working in the digital dark ages—basement shelters with overloaded WiFi, rural client homes with zero cell service, and concrete community centers where signals go to die. If a case worker spends 30 minutes documenting a trauma intake and the app spins, times out, and deletes their draft, that isn't a UI bug. It means asking a vulnerable human to retell their worst moments. That is unacceptable. In 2019, Ink & Switch published what has become the defining essay on local-first software. Their core observation: cloud apps like Google Docs and Trello are popular because they enable collaboration, but they take away ownership and agency from users. If a service shuts down, your data goes with it.
 
-The terms "sync engine" and "local-first" get thrown around interchangeably, but they're not the same thing at all.
+They proposed seven ideals for local-first software that we treated as a Bill of Rights:
 
-**Sync engines** are the WebSocket and reactive layer that keeps data flowing between client and server in real-time. Think of Convex's reactive subscriptions, Firebase's real-time database, or Zero Sync's automatic synchronization. These handle the *plumbing* of real-time data transport.
+1. **No spinners** — Work happens instantly, on your device.
+2. **Your work is not hostage to a server** — Data lives locally first.
+3. **The network is optional** — Full functionality offline.
+4. **Seamless collaboration** — Multiple users, no conflicts.
+5. **The Long Now** — Your data outlives any company.
+6. **Security and privacy by default** — You control access.
+7. **You retain ownership** — Export, migrate, delete freely.
 
-**Local-first** is an architectural philosophy where the user's device is the source of truth. Your app works offline, changes sync when connected, and most importantly, you need to handle *conflict resolution* when multiple clients make diverging changes offline.
+Local-first isn't just a technical architecture—it's a user rights issue. And for Trestle, it's even more fundamental.
 
-Here's the key insight: **sync engines give you the transport layer. Local-first requires you to solve the hard problem of merging conflicting changes.**
+---
 
-Convex already gives us an excellent sync engine. Reactive queries, optimistic updates, WebSocket connections with automatic reconnection. What it doesn't give us out of the box is: what happens when User A and User B both edit the same document offline, then both come online?
+## Understanding the Problem Space
 
-## The Conflict Resolution Trilemma
+In the discourse surrounding local-first development, the term is frequently—and incorrectly—used interchangeably with sync engines. To build the right product, you must first distinguish between these two layers. **Sync engines** comprise the WebSocket and reactive layers that facilitate real-time data flow between client and server. Examples include Convex’s reactive subscriptions, Firebase’s Realtime Database, or Zero Sync. These tools handle the "plumbing" of data transport. **Local-first**, by contrast, is an architectural philosophy where the user’s device is the primary source of truth. The app remains fully functional offline, syncing changes only when a connection is restored. This shift requires solving the most difficult problem in distributed systems: conflict resolution. Convex provides an exceptional sync engine, but it doesn't dictate what happens when User A and User B edit the same document offline and reconnect simultaneously. That logic remains the developer's responsibility.
 
-When users edit data offline and sync later, conflicts are inevitable. User A changes a document's title while offline. User B changes the same document's status while offline. Both sync back to the server. What happens?
+```mermaid
+flowchart LR
+    subgraph "Sync Engine"
+        A[Client A] <-->|WebSocket| S[Server]
+        B[Client B] <-->|WebSocket| S
+    end
+    
+    subgraph "Local-First"
+        A2[Client A Offline] -->|Edit| DOC1[Document v1]
+        B2[Client B Offline] -->|Edit| DOC2[Document v1']
+        DOC1 -->|Merge?| CONFLICT{{"💥 Conflict"}}
+        DOC2 -->|Merge?| CONFLICT
+    end
+```
 
-There are three main approaches:
+### The Conflict Resolution Trilemma
 
-### Last-Write-Wins (LWW)
+When users edit data offline, conflicts are inevitable. There are a few approaches for conflict resolution, but I'll showcase three of them—two we didn't go with and the last being the core of Replicate. You'll see why.
+
+**1. Last-Write-Wins (LWW)**
 
 The simplest approach: timestamp every change, and the most recent one wins.
 
-```
+```text
 User A (offline): title = "Meeting Notes" at 10:00:01
 User B (offline): title = "Standup Notes" at 10:00:02
 
-Result: "Standup Notes" wins, User A's change is silently lost
+Result: "Standup Notes" wins, User A's change is silently lost.
 ```
 
-Simple to implement, but you lose data. User A's edit evaporates without warning. Great for simple use cases, unacceptable for collaborative editing or data that matters.
+Simple to implement, but you lose data. User A's edit evaporates without warning. For data that matters—like case notes for vulnerable populations—this is completely unacceptable. This LWW, SWW, CWW or any resolution strategy where it just picks a source of truth over another all fall under this umbrella problem of unbounded amounts of data loss. From @Jamie in the Local-first convex Discord
 
-### Operational Transformation (OT)
+> "automatic "local first" systems use "last write wins" under the covers, which is tantamount to unbounded data loss.
+> if you really reason through worst case scenario in those circumstances--someone commits an offline transaction and closes their
+> laptop for 30 days before re-opening and getting connected to the network--the outcome can be so 
+> lossy and confusing as to make LWW almost unusable in practice"
 
-Used by Google Docs and other real-time editors. Transform operations based on what other users have done. If User A inserts "hello" at position 5, and User B inserts "world" at position 3, OT transforms these operations so both edits survive in the correct order.
 
-Powerful but incredibly complex. Order matters, and getting it wrong means data corruption. The algorithms are notoriously difficult to implement correctly—Google's Wave team famously struggled with OT bugs. And OT typically requires a central server to establish operation ordering, which breaks the local-first model.
+**2. Operational Transformation (OT)**
+This is the engine behind Google Docs. It mathematically transforms operations based on the context of other concurrent edits. While powerful, it is notoriously difficult to implement and typically requires a central server to establish a single "official" order of operations, which can conflict with true local-first agency.
 
-### CRDTs (Conflict-free Replicated Data Types)
+**3. CRDTs (Conflict-free Replicated Data Types)**
 
-The mathematical approach. CRDTs guarantee that any two replicas that have seen the same set of updates will converge to the same state, regardless of the order those updates arrived. No central authority needed. No complex transformation logic. Just math that works.
+CRDTs are the mathematical "holy grail." They guarantee that any two replicas will eventually converge to the identical state, regardless of the order in which updates arrived. They rely on being Commutative (order doesn't matter) and Idempotent (duplicates are safe).
 
 **Key CRDT Properties:**
-- **Commutative** - Order of operations doesn't matter: A + B = B + A
-- **Associative** - Grouping doesn't matter: (A + B) + C = A + (B + C)
-- **Idempotent** - Duplicates are safe: A + A = A
+- **Commutative** — Order doesn't matter: $A + B = B + A$
+- **Associative** — Grouping doesn't matter: $(A + B) + C = A + (B + C)$
+- **Idempotent** — Duplicates are safe: $A + A = A$
 
 This means any device can apply any changes in any order and reach the same final state. It's almost magical when you first see it work.
 
-The CRDT space has several major players:
-- **Yjs**: Optimized for text editing, pure JavaScript, battle-tested
-- **Automerge**: Optimized for JSON-like structured data, WASM-based
-- **Loro**: Rust-first with WASM bindings, advanced algorithms
+The major CRDT implementations are **Yjs** (optimized for text, pure JavaScript), **Automerge** (JSON-like structure, Rust/WASM), and **Loro** (Rust-first with advanced algorithms like Fugue). We'd eventually dance with all of them.
 
-For our use case—structured documents in a collaborative environment with React Native as a target—the choice would become clear, but not before we learned some expensive lessons.
+
+It is worth noting Jamie also said the follow about CRDT's in the same text exchange as the previous conversation about LWW
+> "I don't recommend CRDTs, as someone that has used them a lot in the past
+> they're wonderful early in a project when things are simple, and then IME they break down as the project goes 
+> and transactional complexity increases. you end up boxed into corners when the paradigm no longer works, 
+> or you need more expressive but still strong consistency "
+
+but the thing is, I like cherry picking, and I'm gonna make a really nice pie with all these cherries, so lets carry on.
 
 ---
 
-# The Search for the Right Architecture
+## The Landscape: A Graveyard of Ambition
 
-Before I understood the theory I just explained, I learned it the hard way—by building the wrong thing, studying why others had failed, and slowly piecing together what actually works.
+The local-first landscape is a graveyard of ambitious projects that either pivoted, struggled under their own weight, or solved only a fraction of the problem. My own journey through this graveyard was anything but _linear_. I began by experimenting with **ElectricSQL** and the alpha version of **TanStack Table/DB**, often doing things in the "wrong" order before I truly understood the architectural requirements.
 
-## My First Experiment: TanStack DB + Convex
+### Phase 1: The "Rich-CRDT" Era (Old ElectricSQL)
 
-When TanStack DB first released, I immediately saw the potential. They had a WebSocket example showing a clean push-pull model for optimistic updates. I built a prototype integrating TanStack DB's reactive collections with Convex's subscriptions.
+ElectricSQL’s original vision (2022–2024) was the most sophisticated attempt I’d seen: bringing the full power of PostgreSQL to the client with automatic conflict resolution. They built on **Vaxine**, a Rich-CRDT database inspired by **AntidoteDB**—the research project from the scientists who literally invented CRDTs.
 
-It worked beautifully. Convex's reactive queries fed into TanStack DB's local state. Optimistic mutations felt instant. The UI updated in real-time across tabs. This was the buttery-smooth experience Francis wanted.
+Standard CRDTs handle field-level conflicts beautifully, but they are "database-blind." They don’t understand relational constraints. What happens if you delete a parent record while another user adds a child referencing it? ElectricSQL attempted to solve this with three mechanisms:
 
-Then I took my laptop offline. Made some changes. Came back online.
+1. **Composition**: Treating a JSON document or row as a nested tree of registers, counters, and sets, where each field has its own merge semantics.
+2. **Compensations**: "Triggers" that fire during a merge to fix constraint violations. If a parent is deleted but a child is added, a compensation might resurrect the parent or reassign the child to a "tombstone" record.
+3. **Reservations**: For constraints that can’t be fixed after the fact (like unique usernames), clients could "escrow" values. A server might pre-allocate a pool of IDs to a client so they can work offline without risk of collision.
 
-The data was gone.
+To track all this, they used **Shadow Tables**—auxiliary tables that mirrored your Postgres schema to store operation history, vector clocks, and tombstones.
 
-This was my first real lesson: **I had built a sync engine, not a local-first app**. TanStack DB + Convex gave us excellent real-time sync—reactive, optimistic, fast. What it didn't give us was persistence through offline periods, or any way to handle conflicts when multiple clients diverged.
+### The Pivot: Why Complexity Failed
 
-## Learning from ElectricSQL's Journey
+In July 2024, ElectricSQL pivoted to "Electric Next." Their CEO, James Arthur, offered a post-mortem that perfectly encapsulates the "Rich-CRDT" struggle by citing Gall’s Law:
 
-That failure sent me researching. ElectricSQL caught my attention because they'd been through the full evolution of local-first architecture—and had recently pivoted dramatically. Understanding why taught me crucial lessons.
+> *"A complex system that works is invariably found to have evolved from a simple system that worked."*
 
-### The Ambitious Original Vision: Rich-CRDTs (2022-2024)
+The original approach hit three walls: **Complexity explosion** (merging CRDT and Relational semantics is a head-scratcher), **Performance overhead** (Shadow tables effectively doubled storage needs), and **Abstraction leakage** (developers had to become CRDT experts to debug their own data).
 
-ElectricSQL's original vision was ambitious: bring the full power of PostgreSQL to the client with automatic conflict resolution. They built on **Vaxine**, a Rich-CRDT database based on **AntidoteDB**—an Erlang-based, planet-scale transactional database built on CRDT technology.
+While I didn't adopt this specific pattern, I walked away with a vital tool: **The Replication Table Pattern**, which adapts WAL (Write-Ahead Logging) for sync.
 
-AntidoteDB itself has an impressive pedigree. It emerged from the SyncFree European research project and the follow-up LightKone project. The core team included researchers who literally invented CRDTs—Marc Shapiro, Nuno Preguiça, Carlos Baquero. This wasn't amateur hour.
+You can still find the Vaxine research at [github.com/electric-sql/vaxine](https://github.com/electric-sql/vaxine) and read the original Rich-CRDTs announcement at [electric-sql.com/blog/2022/05/03/introducing-rich-crdts](https://electric-sql.com/blog/2022/05/03/introducing-rich-crdts).
 
-**What made Rich-CRDTs "rich"?**
-
-Standard CRDTs handle data type conflicts (concurrent edits to the same field), but they don't handle database-level constraints. What happens when:
-- User A deletes a parent record while User B adds a child that references it?
-- Two users both try to claim the last available ticket?
-- A uniqueness constraint is violated by concurrent inserts?
-
-Rich-CRDTs extended basic CRDTs with three key mechanisms:
-
-**1. Compensations**
-
-When a constraint violation is detected during merge, compensations automatically "undo" the violating operation and apply a corrective action. Think of it like a database trigger that fires during CRDT merge.
-
-```erlang
-% Pseudocode for compensation
-on_merge(Operation) ->
-    case check_constraints(Operation) of
-        ok -> apply(Operation);
-        {violation, Type} -> 
-            compensate(Type, Operation),
-            log_compensation(Operation)
-    end.
-```
-
-For referential integrity, if a parent is deleted while a child still references it, the compensation might:
-- Cascade delete the child (dangerous)
-- Reassign the child to a "tombstone" parent (safer)
-- Reject the delete and resurrect the parent (safest but surprising)
-
-**2. Reservations**
-
-Reservations solve the "last ticket" problem using an escrow pattern. Before going offline, a client can reserve constraint "slots" that guarantee their operations will succeed.
-
-```
-Online: Client A reserves 5 "available slots" for unique usernames
-Offline: Client A creates 3 users with unique usernames
-Sync: Server validates against reservation, accepts all 3
-```
-
-This is similar to how distributed systems handle inventory: pre-allocate stock to regions so each region can sell locally without coordination.
-
-**3. Shadow Tables**
-
-Vaxine used "shadow tables" to track the CRDT state alongside regular Postgres tables. Every table had a corresponding shadow table storing:
-- Operation history for each row
-- Vector clocks for causality tracking
-- Tombstones for deleted records
-
-PostgreSQL's logical replication (WAL + LSN) synced changes between the server and client SQLite databases.
-
-### Why They Abandoned It
-
-In July 2024, ElectricSQL announced "Electric Next"—a complete architectural pivot. The Rich-CRDT approach was gone, replaced by HTTP streaming with "shapes" (subsets of data that sync incrementally).
-
-The reasons were instructive:
-
-1. **Complexity explosion**: Rich-CRDTs required understanding both CRDT semantics AND relational database semantics. The intersection created edge cases that were hard to reason about and harder to debug.
-
-2. **Performance overhead**: Shadow tables doubled storage requirements. Every write triggered CRDT operations plus Postgres operations plus replication.
-
-3. **Developer experience**: Explaining compensations and reservations to developers who just wanted offline forms was a non-starter. The abstraction leaked constantly.
-
-4. **Client-side Postgres is heavy**: Running SQLite with Postgres-compatible CRDT extensions on every client device added significant bundle size and complexity.
-
-James Arthur (ElectricSQL CEO) wrote candidly about the pivot: the original architecture tried to solve too many problems at once. The new architecture focused on one thing—efficient data streaming from Postgres to clients—and let developers handle conflict resolution in application code.
-
-### My Experiment with Electric Next
-
-Armed with this knowledge, I tried ElectricSQL's new architecture. The DX was impressive—define your schema in Postgres, Electric syncs it to clients automatically. I integrated it with TanStack DB.
-
-Same result as my first experiment. Great sync. No conflict resolution.
-
-Their new architecture explicitly avoided the hard problem:
-
-> "We provide the sync. You bring the conflict resolution strategy."
-
-For simple last-write-wins scenarios, this works. For case workers editing the same intake form from unreliable field locations, silently dropping changes wasn't acceptable.
-
-### The Insight I Kept
-
-But buried in ElectricSQL's legacy architecture was the key insight I needed: **the replication table pattern**—PostgreSQL's WAL + LSN approach adapted for sync. This pattern would become the cornerstone of Replicate's architecture.
-
-While I liked Electric's streaming architecture, I didn't like the HTTP request experience. I wanted a clean WebSocket experience for an instant-feeling application. Convex already provides that.
-
-## Evaluating Other Players
-
-### PowerSync: Production-Ready but Painful
-
-PowerSync was the other major player I evaluated. Production-ready, established companies using it at scale, PostgreSQL logical replication to SQLite on every device.
-
-But the developer experience was frustrating. Their authentication model required either a dedicated endpoint or static key pairs for JWT generation. Their write path required constant HTTP requests to a catch-all endpoint. After days of wrestling with their patterns, I realized we'd be fighting their opinions at every turn.
-
-The lesson: production-readiness doesn't mean production-pleasant.
-
-### Zero by Rocicorp
-
-Zero deserves special mention. Aaron Boodman and the Rocicorp team have been thinking about sync engines longer than almost anyone. Their thesis is compelling: put a sync engine in front of your database and distribute your backend all the way to the main thread of the UI.
-
-Their architecture is elegant—hybrid queries that span client and server, automatic caching, incremental sync. But Zero is its own stack, and we were already committed to Convex. The patterns were instructive even if we couldn't adopt them directly.
-
-From Zero, I learned that the user experience problem and the developer implementation problem are two sides of the same coin. Users expect instant, offline-capable, conflict-free software because that's what native apps trained them to expect. Developers struggle to build it because the primitives are scattered across different libraries and paradigms.
-
-## The Community Signal
-
-Throughout this exploration, I was watching the community closely.
-
-**LocalFirst.fm** (the podcast and community channels) revealed a pattern: developers wanted batteries-included solutions but kept hitting walls. Replicache had excellent DX but significant vendor lock-in. PowerSync was great for mobile but tightly coupled to their backend. RxDB was open source but required a hundred configuration decisions before you could build anything.
-
-**Convex's community** kept asking for local-first. Discord threads about offline support. AMA questions about conflict resolution. GitHub issues proposing offline-capable patterns like [hash-based conditional query fetching](https://github.com/get-convex/convex-backend/issues/146) to support locally cached data.
-
-Then came Convex's Series B announcement in November 2025. Jamie Turner laid out three major features on their roadmap:
-
-> "We aim to ship a **Convex-flavored take on local-first** that will feel as intuitive and ergonomic as the rest of our product."
-
-Local-first was one of three headline features for their $24M raise. The demand was real. The gap was real.
-
-## What I Needed to Build
-
-By the end of my research, I had clarity:
-
-1. **We need a sync engine** (WebSocket/reactive layer) → Convex already gives us this
-2. **We need conflict resolution** (CRDTs) → We'll need to build this
-3. **We need efficient queries** (server-side) → Can't query CRDT bytes directly
-4. **We need local persistence** (offline) → IndexedDB/SQLite for the client
-
-The question was: how do we combine these without the complexity that killed ElectricSQL's first attempt?
 
 ---
 
-# The RxDB Gamble
+### Phase 2: The Quest for the "Linear Feel" (TanStack & PGLite)
 
-In mid-September, I started this repository with what seemed like a brilliant idea: be unopinionated.
+During this time, our product, **Ledger**, was built on a Postgres backbone. We needed an "instant" experience—the kind of snappy, optimistic UI popularized by Linear.
 
-## Why RxDB? The TanStack Collection Provider
+I fell in love with **TanStack DB**. Its DX was incredible, providing the optimistic layer I was looking for. I saw the [Linear Lite](https://linearlite.examples.electric-sql.com/) clones built with **[PGLite](https://pglite.dev/)** (a WASM Postgres that runs in the browser) and wanted that exact workflow.
 
-RxDB is a popular local-first database for JavaScript, and crucially, it's a **TanStack collection provider**. This meant I could potentially get the integration I wanted:
+However, we hit a snag with Electric’s new HTTP-based streaming. For a whiteboard-based workflow editor—the core of Ledger—even small delays in an HTTP stream felt sluggish. We needed (this part isn't actually true, I just really like websockets) the raw speed of WebSockets.
 
-```
-TanStack DB → RxDB → Convex
-```
-
-TanStack DB for the reactive query interface. RxDB for local persistence and conflict resolution. Convex for the sync transport. Three layers, each doing what it's best at.
-
-RxDB's philosophy is flexibility: multiple storage backends, multiple sync protocols, multiple conflict resolution strategies. Let developers choose what works for their use case.
-
-My thinking was:
-- Use RxDB for local storage and conflict resolution flexibility
-- Use TanStack DB for reactive queries over that data
-- Use Convex WebSockets for the sync transport layer
-- Let developers plug in their own conflict resolution if they want
-
-This would be the Swiss Army knife of sync solutions. Flexible, powerful, unopinionated.
-
-## The Anti-Pattern: Two Databases Fighting for Authority
-
-What I didn't realize: **RxDB is meant to BE the backend, not work WITH another backend.**
-
-The architecture I was building had a fundamental flaw. RxDB and Convex both wanted to own the data layer. RxDB expected to be the source of truth with its own persistence and sync. Convex expected to be the source of truth with its reactive subscriptions and mutations.
-
-Putting them together meant:
-- Extra reads: RxDB reading from IndexedDB, then Convex reading from its tables
-- Extra writes: Changes going to RxDB first, then syncing to Convex, then Convex syncing back
-- Broken sync: Convex's default reactive sync was now competing with RxDB's replication protocol
-
-I was breaking Convex's elegant sync model by shoving another database layer in the middle.
-
-## 34 Commits of Fighting Reality
-
-The git history tells a brutal story. Over the next several weeks, I created 34 commits trying to make RxDB work with our stack:
-
-```
-5c23773: "Implement hybrid RxDB + Convex WebSocket architecture (WIP)"
-c163699: "Fix RxDB replication errors and improve real-time sync"
-f76980d: "Simplify RxDB replication to fix WebSocket sync issues"
-702a5aa: "Fix: resolve all memory leaks and cleanup race conditions"
-```
-
-The problems kept mounting:
-
-**Memory Leaks**: RxDB's replication protocol wasn't cleaning up subscriptions properly when working with Convex's reactive queries. Every page navigation leaked observers.
-
-**Bundle Size**: RxDB brought its own WASM modules and IndexedDB adapters, adding significant weight to our client bundle. For a library meant to make things simple, it came with a lot of baggage.
-
-**Impedance Mismatch**: RxDB wasn't designed for Convex's reactive model. We were fighting the framework at every integration point. RxDB expects to own the database; Convex expects to own the sync layer. Making them share responsibility was like forcing two territorial cats to share a bed.
-
-**Complexity Without Benefit**: The "unopinionated" design meant we were configuring everything manually anyway. Where was the value in flexibility if we still needed to make all the hard decisions?
-
-## The Realization
-
-By mid-October, I had to admit the truth: being unopinionated was a feature, not a benefit.
-
-I largely didn't see a reason for developers to have to pick a conflict resolution strategy and have multiple poor implementations. There just needs to be one fast implementation that is clearly incredible and has the least amount of data loss. Developers want to have fun building their app, not debugging sync protocols.
-
-For a good product experience, you need opinions. You need to make the hard choices for your users so they can focus on their actual product.
-
-RxDB was solving a problem we didn't have (supporting multiple databases and sync protocols) while creating problems we did have (complexity, bundle size, integration pain).
+**That’s when I found Convex.** 🫶
 
 ---
 
-# The Automerge Revelation
+### Phase 3: The Coffee Shop Epiphany
 
-On October 24th, I found the article that changed everything: "Automerge and Convex" on the Convex blog.
+Off the tail end of my ElectricSQL research, I was determined to marry Convex’s speed with TanStack’s DX. I built a prototype integrating TanStack’s reactive collections with Convex’s subscriptions.
 
-## The Key Insight: CRDT as Compute Layer, Not Database
-
-The RxDB experiment failed because I was thinking about it wrong. RxDB is a **database** that happens to support CRDTs. It has opinions about storage, sync, and data ownership. Those opinions conflicted with Convex's opinions.
-
-But Automerge, used correctly, isn't a database at all. **It's a compute layer.**
-
-The article showed me the right architecture:
+```mermaid
+flowchart TD
+    UI[React UI] <--> TS[TanStack DB]
+    TS <-->|WebSocket Subscription| CONVEX[(Convex)]
 
 ```
-TanStack DB → Convex (with Automerge as pure merge logic)
-```
 
-Not three layers fighting for control. Just two:
-- **TanStack DB + Convex**: Handle all the data management, persistence, sync, and reactivity
-- **Automerge**: Just do the CRDT math when conflicts need merging
+In the office, on 5G WiFi, it was magic. It was fast, reactive, and felt like the future. Then, I took my laptop to a coffee shop (this part didn't happen either, but for visualization its useful).
 
-Automerge doesn't want to own your data. It doesn't have opinions about storage backends or sync protocols. It just takes two divergent states and produces a merged result. That's it. **Pure computation, no database opinions.**
+1. The connection was flaky.
+2. I made several changes to the workflow.
+3. The connection dropped entirely.
+4. I made more changes, assuming the "sync engine" would handle it.
+5. The connection restored.
 
-## The Guide's Architecture
+**The data was gone.**
 
-The Convex blog article proposed:
+I had successfully built a **sync engine** with optimistic updates, but I had not built a **local-first app**. TanStack DB + Convex gave us real-time transport, but it provided zero persistence through offline periods and had no strategy for merging diverged state.
 
-**1. Automerge CRDTs for conflict-free merging**
-Instead of trying to be flexible about conflict resolution, just use Automerge. It works. It's production-ready. And critically—it doesn't try to own your data layer.
-
-**2. Convex for everything else**
-Convex handles the sync engine layer. Real-time WebSocket subscriptions, automatic reconnection, optimistic updates. Storage. Persistence. Don't reinvent any of this.
-
-**3. Store CRDT bytes on the server**
-Store Automerge documents as binary blobs in Convex. The server doesn't need to understand CRDTs. It just stores and serves bytes. The merge computation happens client-side.
-
-**4. Hybrid storage**
-Not all data needs CRDTs. Use them for collaborative documents. Use regular Convex tables for everything else.
-
-## The Pivot
-
-That day, October 24th, I made the call: rip out RxDB, go all-in on Automerge + Convex.
-
-Six commits that day tell the story:
-
-```
-c8f37c4: "Feat: add Convex storage component for CRDT binary data"
-1e49827: "Docs: add architecture documentation for Automerge migration"
-8eb37fc: "Refactor: remove RxDB-based implementation from core package"
-3f0bef7: "Refactor: replace RxDB with clean Automerge implementation"
-3835c01: "Refactor: complete migration from RxDB to Automerge architecture"
-```
-
-The decision wasn't just about switching libraries. It was about being opinionated for the benefit of our users.
+I liked the DX, but I had ignored the "Hard Problem" I mentioned earlier: **Conflict resolution and local persistence are not included in the transport layer.** and so because I don't really feel like solving this problem myself just yet and because the other engineer didn't want to switch our tech stack from Postgres to a database company we hadn't heard of before, I did one more built in local-first trail on the workflow editor project.
 
 ---
 
-# Why "Replicate"? The Replication Table Pattern
 
-The name isn't accidental. It's a reference to one of the oldest patterns in database engineering.
+### Evaluating PowerSync
 
-## PostgreSQL's Replication Tables
+Production-ready, established companies using it at scale, PostgreSQL logical replication to SQLite on every device.
 
-PostgreSQL has had logical replication for decades. At its core is a simple pattern:
+Their architecture is clean on paper:
 
-1. **Write-Ahead Log (WAL)** - Every change is logged before being applied
-2. **Log Sequence Numbers (LSN)** - Each entry has a monotonically increasing identifier
-3. **Replication Slots** - Clients track their position in the log
-4. **Incremental Sync** - Clients request changes since their last position
-
-## The Cornerstone Commit
-
-That first commit on October 24th became the cornerstone of the entire architecture:
-
-```
-c8f37c4: "Feat: add Convex storage component for CRDT binary data"
+```mermaid
+flowchart TD
+    PG[(PostgreSQL)] -->|WAL| PS[PowerSync Service]
+    PS -->|Sync Rules| BUCKET[Buckets]
+    BUCKET -->|WebSocket/HTTP| CLIENT[Client SQLite]
+    CLIENT -->|Writes| API[Backend API]
+    API -->|Mutations| PG
 ```
 
-This commit established a replication table in Convex—a component table that stores CRDT bytes with timestamp indexes for incremental sync. Every commit after refined this philosophy:
+The core idea: tail the Postgres Write-Ahead Log, filter changes through "Sync Rules" into "Buckets" (subsets of data relevant to each client), and stream those buckets to client-side SQLite databases.
+
+But the developer experience was frustrating:
+
+- **Authentication**: Their auth model required either a dedicated endpoint that generates JWTs with PowerSync-specific claims, OR static key pairs for JWT generation. Neither integrated cleanly with our existing auth flow.
+- **Write Path**: All writes go through HTTP requests to a catch-all endpoint on your backend. You lose Convex's elegant mutation model and have to build your own write validation layer.
+- **Sync Rules Complexity**: Defining what data each user can see requires learning their custom Sync Rules DSL. It's powerful but yet another abstraction to maintain.
+
+After days of wrestling with their patterns, I realized we'd be fighting their opinions at every turn. The lesson: production-readiness doesn't mean production-pleasant. And I was greedy, I want awesome DX this was my greenfield project and I was gonna have a good time building it goddamnit.
+
+### Zero by Rocicorp: Elegant but Its Own Stack
+
+Zero deserves special mention. Aaron Boodman and the Rocicorp team have been thinking about sync engines longer than almost anyone—Aaron built Google Gears back in 2007 and later created Replicache.
+
+Their thesis is compelling, stated directly in their docs:
+
+> "Zero was built by people obsessed with interaction performance."
+
+The idea: put a sync engine in front of your database and distribute your backend all the way to the main thread of the UI. Queries that would normally require a server round-trip execute instantly against local state.
+
+Their architecture is elegant:
+- **Hybrid queries** that span client and server transparently
+- **Automatic caching** with intelligent invalidation
+- **Incremental sync** that only transfers deltas
+
+But Zero is its own stack. You adopt their query language, their data model, their sync semantics. We were already committed to Convex for our backend, and Zero didn't integrate with it.
+
+What I learned from Zero: the user experience problem and the developer implementation problem are two sides of the same coin. Users expect instant, offline-capable, conflict-free software because that's what native apps trained them to expect. Developers struggle to build it because the primitives are scattered across different libraries and paradigms.
+
+Their documentation is excellent: [zero.rocicorp.dev/docs/when-to-use](https://zero.rocicorp.dev/docs/when-to-use).
+
+---
+
+After all this research—ElectricSQL's pivot, TanStack's promise, PowerSync's opinions, Zero's elegance—I thought I finally understood the landscape. The surveying was done. Time to actually build something.
+
+Spoiler: I was still wrong about a lot of things.
+
+## The RxDB Gamble: Two Cats, One Bed
+
+For my first serious attempt at a solution, I turned to **RxDB**. On paper, it was the perfect candidate: it acted as a TanStack collection provider, offered built-in CRDT support, and boasted multiple storage adapters. The plan was simple: RxDB would handle local persistence and conflict resolution, while Convex would serve as the high-speed transport layer.
+
+```mermaid
+flowchart TD
+    UI[React UI] <--> TS[TanStack DB]
+    TS <--> RX[RxDB]
+    RX <-->|IndexedDB| IDB[(Local Storage)]
+    RX <-.->|Replication Protocol| CONVEX[(Convex)]
 
 ```
-b197f4f: "refactor: update replication helpers and store for CRDT bytes"
-87ff70b: "refactor: update component to use crdtBytes and split insert/update/delete API"
-f934227: "Refactor: migrate storage component to replicate API"
-4c6681d: "Fix: Import replication helpers from /replication to avoid Automerge on server"
-```
 
-The pattern we built:
+### The Fundamental Flaw: Dual Authority
+
+I quickly discovered a hard truth: RxDB wants to be the database, and Convex wants to be the database. Forcing them together was like trying to get two territorial cats to share a single bed.
+
+My Git history from this period is a graveyard of dozens of commits spent trying to referee this fight. Three core issues made the integration untenable:
+
+* **Memory Leaks:** RxDB’s replication protocol was never designed for Convex’s reactive subscriptions. Every page navigation leaked observers, causing memory usage to climb steadily until the browser crashed—usually within 20 minutes of use.
+* **Bundle Size Explosion:** RxDB brought a massive tail of dependencies, including its own WASM modules and IndexedDB adapters. The bundle size ballooned from 150KB to over 800KB.
+* **The Authority Crisis:** Both systems fought for the data lifecycle. RxDB would cache documents that Convex had already invalidated, and Convex subscriptions would occasionally overwrite RxDB’s conflict resolutions.
 
 ```typescript
-// The replication table schema
+// The "Referee" Code: A losing battle
+const syncToConvex = async (doc: RxDocument) => {
+  // Is Convex's version newer? Check timestamps...
+  // But RxDB and Convex use different clock semantics.
+  // If both changed 'title' offline, who wins?
+  // Result: Total state inconsistency.
+};
+
+```
+
+### The Realization: Flexibility is a Bug
+
+After weeks of struggle, I had to admit defeat. The experience taught me a counter-intuitive lesson: **In local-first architecture, being "unopinionated" is often a bug, not a feature.** As developers, we think we want a menu of conflict resolution strategies to choose from. In reality, we want a fast, opinionated implementation that "just works" so we can get back to building features. This echoed the candid insights I gained from **Jamie**. His skepticism of CRDTs for complex applications and his critique of "unbounded data loss" in LWW systems highlighted exactly why my RxDB experiment failed: **I was trying to solve a logic problem with a library.**
+
+I had the transport layer (Convex) and the UI layer (TanStack), but the "middle" was a mess of conflicting authorities. I realized that most existing conflict resolution implementations simply suck—they are either too complex to reason about or too fragile for real-world edge cases. I needed a way to make the client and server speak the same language without the overhead of a second, competing database engine.
+
+
+
+## The Scrolls That Changed Everything
+
+I had tasted enough of the local-first landscape to know what I wanted: Convex's speed, TanStack's DX, and conflict resolution that actually worked. Time to build the missing piece myself.
+
+But before I found the right architecture, I built the wrong things. Repeatedly. What finally broke me out of the loop wasn't code—it was two blog posts that I must have read a dozen times before they clicked.
+
+### The Keys Hidden in the Scrolls
+
+Two posts from the Convex team shaped my thinking profoundly:
+
+**["An Object Sync Engine for Local-first Apps"](https://stack.convex.dev/object-sync-engine)** by Sujay Jayakar outlined Convex's vision for a batteries-included object sync engine. He analyzed how Linear, Figma (LiveGraph), and Asana (LunaDB) had all independently developed similar architectures. The post broke down the three components every sync engine needs:
+
+1. **Local Store** — Where client data lives (IndexedDB, SQLite)
+2. **Server Store** — The authoritative source (Convex, Postgres)
+3. **Sync Protocol** — How they stay in sync (WebSocket, polling)
+
+The nine-dimension framework for categorizing sync engines gave me vocabulary I didn't have before: data size, update rate, structure, input latency, offline support, concurrent clients, centralization, flexibility, consistency.
+
+**["Going local-first with Automerge and Convex"](https://stack.convex.dev/automerge-and-convex)** by [@ianmacartney](https://x.com/ianmacartney) was the practical implementation guide. Ian showed how to use Automerge as a CRDT layer on top of Convex's transport. His sync logic became the foundation for our first working prototype:
+
+1. When tracking a new document, read from IndexedDB and fetch changes from server
+2. Subscribe to server changes via paginated queries
+3. On local change, calculate diff and submit via mutation
+4. Periodically compact changes into snapshots
+
+He also laid out the **Three C's of CRDT Considerations**:
+
+- **Consistency**: CRDT data doesn't have transactional guarantees with other data. You might see a reference to a document you don't have yet.
+- **Correctness**: Some state changes (like admin status or payment confirmation) shouldn't be resolved by CRDT merge—they need server authority.
+- **Convenience**: CRDTs are incredibly convenient for collaborative text editing. They're less convenient when you need to await confirmation that a mutation succeeded.
+
+This was the breakthrough insight: **Stop treating the CRDT as the database. Treat it as a compute layer.**
+
+```mermaid
+flowchart TD
+    UI[React UI] <--> AM[Automerge Doc]
+    AM <-->|Persist| IDB[(IndexedDB)]
+    AM <-->|Sync Adapter| CONVEX[(Convex)]
+    CONVEX -->|Subscription| UI
+```
+
+The roles became clear:
+1. **Convex** handles storage, auth, and transport (the database).
+2. **TanStack Query** handles the UI reactivity (the view).
+3. **The CRDT** is just a library that does math on binary blobs (the compute).
+
+
+---
+
+## The Automerge Era: Component Architecture
+
+Late October. RxDB was behind me, the blog posts were internalized, and I had that dangerous feeling engineers get when everything suddenly makes sense. "This time," I told myself, "I know exactly what to build."
+
+Instead of trying to integrate two database systems, I would build a **Convex Component** that used Automerge purely for merge logic. No more authority fights. Convex is the database. Automerge is just math.
+
+The difference from Ian's blog pattern was architectural: his was a library approach (sync adapter), mine was a component approach (encapsulated backend).
+
+```mermaid
+flowchart TB
+    subgraph "Client"
+        UI[React UI] <--> TSQ[TanStack Query]
+        TSQ <--> AM[Automerge Doc]
+        AM <-->|Persist| SQLITE[(SQLite/IndexedDB)]
+    end
+    
+    subgraph "Convex Backend"
+        AM <-->|Sync| COMP[Replicate Component]
+        COMP --> LOG[(Event Log)]
+        COMP --> MAT[(Materialized View)]
+    end
+```
+
+The cornerstone was the **Replication Table Pattern**, adapted from PostgreSQL's Write-Ahead Log:
+
+```typescript
+// The replication table schema (commit c8f37c4)
 documents: defineTable({
   collectionName: v.string(),
   documentId: v.string(),
@@ -453,81 +365,84 @@ documents: defineTable({
   timestamp: v.number(),       // For checkpoint queries
 })
   .index('by_timestamp', ['collectionName', 'timestamp'])
+  .index('by_version', ['collectionName', 'version'])
 ```
 
-This is PostgreSQL's replication table pattern, adapted for Convex with CRDT bytes instead of row changes.
+The pattern:
+1. **Write-Ahead Log (WAL)** — Every change is appended to the log before being applied.
+2. **Log Sequence Numbers (LSN)** — Monotonically increasing identifiers for each entry.
+3. **Replication Slots** — Clients track their position in the log.
 
-## The Double Meaning
+This is the same pattern that powers Postgres replication, Kafka, and countless other distributed systems. We were standing on the shoulders of giants.
 
-So why "Replicate"?
+### The WASM Tax
 
-1. **The verb**: To replicate data across devices, offline and online
-2. **The noun reference**: We replicated the replication table pattern itself
+Automerge worked. We had conflict resolution. We had offline persistence. But we had a new problem: **cost**.
 
-We took the battle-tested pattern that powers PostgreSQL logical replication, that ElectricSQL proved worked for local-first sync, and built it as a Convex component. The progression from that cornerstone commit is the story of refining this philosophy—making the replication table pattern work beautifully with CRDTs in the Convex ecosystem.
+Automerge is written in Rust and compiled to WASM. In a browser? Fast. Inside the Convex runtime? **Expensive.**
 
-It's a tribute to the database engineers who figured this out decades ago. We're just standing on their shoulders, adding CRDTs on top.
-
----
-
-# Evolution to Yjs: The Right Tool
-
-The Automerge architecture worked, but we hit a snag: WASM in the Convex runtime.
-
-## The WASM Problem
-
-Automerge is written in Rust and compiled to WASM for JavaScript environments. This is great for performance in the browser—Rust is fast, and WASM is near-native speed.
-
-But Convex functions run in an isolated JavaScript environment with specific constraints and costs. Understanding these costs was crucial to our decision.
-
-### Convex Runtime Constraints
-
-According to Convex's documentation, their runtimes have specific limits:
+Convex's runtime has constraints designed for serverless efficiency:
 
 | Resource | Convex Runtime | Node.js Runtime |
 |----------|---------------|-----------------|
 | Memory | 64 MiB RAM | 512 MiB RAM |
-| Execution Time (Query/Mutation) | 1 second | 1 second |
-| Execution Time (Action) | 10 minutes | 10 minutes |
-| Code Size | 32 MiB per deployment | 32 MiB per deployment |
+| Execution Time | 1 second | 1 second |
+| Code Size | 32 MiB | 32 MiB |
 
-The pricing model also matters:
-- **Function calls**: $2 per additional 1,000,000 calls (Professional plan)
-- **Action execution**: $0.30/GiB-hour (Professional plan)
-
-Loading WASM modules in Convex means:
-- **Larger function bundles**: WASM files are not small—they eat into that 32 MiB limit
-- **Cold start latency**: WASM initialization happens on every cold start
-- **Compute costs**: Every function call pays for WASM initialization time
-- **Memory pressure**: WASM modules consume that precious 64 MiB
-
-For a component meant to be mounted in user applications, we were adding overhead to every Convex function, even ones that didn't use CRDTs. The server doesn't need to understand CRDT operations—it just stores bytes. But with Automerge, the WASM came along for the ride.
-
-### The Hidden Cost of WASM Crossing
-
-There's another cost that benchmarks often miss: the JavaScript/WASM boundary. Every time you pass data between JS and WASM, there's serialization overhead. For a sync library that might process many small operations, this adds up.
+Every time you cross the JS/WASM boundary, you pay serialization overhead. Initializing the WASM module takes milliseconds. Those milliseconds add up when you're charging per function execution.
 
 ```javascript
 // Each of these crosses the JS/WASM boundary
-const doc = Automerge.init();           // WASM call
+const doc = Automerge.init();           // WASM call - serialize/deserialize
 Automerge.change(doc, d => {            // WASM call  
-  d.title = "Hello";                    // Multiple WASM calls for property access
+  d.title = "Hello";                    // Multiple WASM calls internally
 });
-const bytes = Automerge.save(doc);      // WASM call with serialization
+const bytes = Automerge.save(doc);      // WASM call with full serialization
 ```
 
-## Why Yjs Won
+We were burning money to serialize JSON into Rust structs and back on every single function call. For a high-frequency sync operation, this was unsustainable.
 
-Yjs is pure JavaScript. No WASM, no Rust compilation, no binary artifacts. It's also:
+Ian's blog post had warned about this:
 
-- **Battle-tested** at massive scale (Notion, Figma reportedly use similar CRDT approaches)
-- **Small bundle size** (~30KB minified, ~91KB when including all dependencies)
-- **Rich ecosystem** with persistence providers, editor bindings, awareness protocol
-- **Efficient encoding** using state vectors for minimal sync payloads
+> "Loading wasm from a string can add up to 200ms to each request, so try to avoid it when possible."
+
+We needed a pure JavaScript CRDT library. But before I tell you about the obvious solution, let me tell you about the gasoline that got poured on my competitive fire.
+
+### The Community Signal
+
+Throughout this exploration, I was watching the community closely.
+
+LocalFirst.fm (the podcast and community Discord) revealed a pattern: developers wanted batteries-included solutions but kept hitting walls. InstantDB had excellent DX but significant vendor lock-in. PowerSync was production-ready but tightly coupled to their backend patterns. RxDB was open source but required a hundred configuration decisions before you could build anything useful.
+
+The Convex community kept asking for local-first. Discord threads about offline support. AMA questions about conflict resolution. GitHub issues proposing offline-capable patterns like hash-based conditional query fetching to support locally cached data.
+
+Then came the [Convex raise announcement](https://news.convex.dev/convex-raises-24m/) in November 2025. [@Jamie](https://x.com/jamwt) laid out three major features on their roadmap:
+
+> "We aim to ship a Convex-flavored take on local-first that will feel as intuitive and ergonomic as the rest of our product."
+
+Local-first was one of three headline features for their raise from [@a16z](https://x.com/a16z) and [@sparkcapital](https://x.com/sparkcapital).
+
+Here's the thing: when I read that announcement, I already had a working API for Trestle's sync needs. It wasn't polished, it wasn't universal, but it worked. My first reaction was competitive fire. "Man, I can do this myself." Not exactly those words, but that energy. The raise fueled my determination to ship something cool before the Convex team shipped their official solution.
+
+---
+
+
+## Evolution to Yjs: The Boring Winner
+
+Sometimes the right answer is the boring one.
+
+With the Convex raise fresh in my mind and the WASM tax burning a hole in our wallet, I did what I should have done from the start: I looked at what Notion and Figma actually use in production. They use Yjs. So we ripped out Automerge and dropped in Yjs.
+
+The migration took two days. Two days! After weeks of fighting Automerge's WASM overhead, two days felt like a miracle. The results were immediate.
+
+- **Pure JavaScript**: No WASM overhead, no boundary-crossing serialization costs.
+- **Tiny Bundle**: ~30KB minified vs Automerge's larger footprint.
+- **State Vectors**: A genius sync protocol that minimizes data transfer.
+- **Battle-tested**: Used by Notion, Figma, and countless collaborative editors.
 
 ### Bundle Size Comparison
 
-Based on the crdt-benchmarks repository (using the Automerge paper dataset: 182,315 insertions, 77,463 deletions, 259,778 total operations):
+Based on the standard Automerge paper dataset (259,778 single-character insertions):
 
 | Library | Snapshot Size | With Compression |
 |---------|--------------|------------------|
@@ -536,225 +451,83 @@ Based on the crdt-benchmarks repository (using the Automerge paper dataset: 182,
 | Diamond-types | 281 KB | 151 KB |
 | Automerge | 293 KB | 129 KB |
 
-Yjs has the smallest uncompressed size. With compression, it's also the smallest. For a library that loads on every page, this matters.
+Yjs wasn't just smaller—it was also faster for our use case because it avoided the WASM boundary entirely.
 
-The migration was captured in a single breaking change commit:
+### State Vector Sync
 
-```
-2e012e7: "feat!: migrate from Automerge to Yjs with TanStack offline-transactions"
-```
-
-## State Vector Sync
-
-Yjs introduced us to state vectors—a compact representation of "what changes has this client seen?" that enables efficient delta sync.
+Instead of "Give me all changes since timestamp X" (which has ordering problems we'll discuss later), Yjs uses state vectors. A state vector is a compact representation of "everything I've seen from each peer."
 
 ```javascript
-// Full sync: exchange complete documents
-const state1 = Y.encodeStateAsUpdate(ydoc1)
-const state2 = Y.encodeStateAsUpdate(ydoc2)
-Y.applyUpdate(ydoc1, state2)
-Y.applyUpdate(ydoc2, state1)
+// Client asks: "What am I missing?"
+const myStateVector = Y.encodeStateVector(myDoc);
 
-// Efficient sync: exchange only differences
-const stateVector1 = Y.encodeStateVector(ydoc1)
-const stateVector2 = Y.encodeStateVector(ydoc2)
-const diff1 = Y.encodeStateAsUpdate(ydoc1, stateVector2)
-const diff2 = Y.encodeStateAsUpdate(ydoc2, stateVector1)
-Y.applyUpdate(ydoc1, diff2)
-Y.applyUpdate(ydoc2, diff1)
+// Server computes: "Here's exactly what you need"
+const diff = Y.encodeStateAsUpdate(serverDoc, myStateVector);
+
+// Client applies only the missing changes
+Y.applyUpdate(myDoc, diff);
 ```
 
-Instead of sending the full document on every sync, we send: "Here's what I've seen. What am I missing?" The server responds with only the deltas the client needs. For large documents with many edits, this is orders of magnitude more efficient.
+This is more efficient than timestamp-based sync because:
+1. It handles out-of-order delivery gracefully
+2. It automatically deduplicates changes the client already has
+3. It works even when clocks are skewed between devices
+
+```mermaid
+flowchart TB
+    subgraph "Client Device"
+        UI[React UI] <-->|Read| TSQ[TanStack Query Cache]
+        UI <-->|Write| YJS[Yjs CRDT Doc]
+        YJS <-->|Persist| SQLITE[(Local SQLite)]
+        YJS -->|Sync Delta| SERVER
+    end
+
+    subgraph "Convex Server"
+        SERVER[Replicate Component]
+        SERVER -->|Subscription| TSQ
+        LOG[(Event Log<br/>Append Only)]
+        MAT[(Materialized View)]
+        
+        SERVER -->|1. Append Delta| LOG
+        SERVER -->|2. Update View| MAT
+    end
+```
 
 ---
 
-# The Loro Tangent: When Context Matters More Than Speed
 
-While working on Yjs integration, I discovered Loro—a newer CRDT library with impressive benchmarks and cutting-edge algorithms (Fugue for text, Peritext for rich formatting). This became a multi-week exploration that taught us critical lessons about choosing tools for the right context.
 
-## The loro Branch
 
-I created a branch to explore Loro integration:
 
-```
-08b0b00: "feat: add Loro adapter layer and make component byte-agnostic"
-4109978: "refactor: migrate collection layer from Yjs to Loro"
-aeb9e76: "refactor: migrate persistence layer to store Loro snapshots directly"
-894db9f: "refactor: complete platform-specific entry points for Loro migration"
-```
+## Component Authoring: Reverse Engineering the Future
 
-We built a complete adapter layer abstracting Loro's WASM and native implementations:
+One surreal aspect of building Replicate was that we shipped v1.0.0 *before* Convex publicly released their component authoring documentation. We were building on a system that didn't officially exist yet.
 
-```typescript
-// From loro/adapter.ts - abstracting the CRDT implementation
-export interface LoroAdapter {
-  createDoc(peerId?: string): LoroDocHandle;
-  import(doc: LoroDocHandle, bytes: Uint8Array): void;
-  export(doc: LoroDocHandle, mode: ExportMode): Uint8Array;
-  
-  // Key difference: Loro uses "frontiers" not "stateVector"
-  getFrontiers(doc: LoroDocHandle): Frontiers;
-  encodeFrontiers(frontiers: Frontiers): Uint8Array;
-  // ...
-}
-```
+Our approach was archaeological:
+1. Study the R2 storage component example (one of the few public component implementations)
+2. Cargo-cult `convex.config.ts` patterns that seemed to work
+3. Read the Convex source code when documentation failed us
+4. Ask questions in Discord and pray
 
-## Why We Didn't Ship It
+The Convex team was incredibly helpful. [@ianmacartney](https://x.com/ianmacartney) answered questions at all hours. But we were still building on shifting ground.
 
-After getting Loro working, three hard-earned lessons emerged:
+You can now find the official documentation at [docs.convex.dev/components](https://docs.convex.dev/components).
 
-### 1. Frontiers vs State Vectors: A Fundamental Mismatch
+### Build System Evolution
 
-Loro uses **frontiers** for sync, not **state vectors** like Yjs. This sounds like a minor detail—both represent "what changes have I seen?"—but the implications for server-side operations are profound.
+The build tooling journey was its own adventure:
 
-```typescript
-// Yjs: Server can merge and validate state vectors
-const serverVector = Y.encodeStateVectorFromUpdateV2(mergedState);
-const diff = Y.diffUpdateV2(mergedState, clientVector);
+**Phase 1: tsc**
+Simple TypeScript compilation. Worked, but slow. No bundling. Dual ESM/CJS output was painful to configure.
 
-// Loro: Frontiers are opaque bytes the server can't interpret
-// From loro:src/component/schema.ts
-snapshots: defineTable({
-  frontiers: v.bytes(),  // Server stores but can't merge these
-})
-```
+**Phase 2: rslib/rsbuild**
+Fast Rspack-based bundling. Better, but the configuration was complex and we kept hitting edge cases with Convex's module resolution.
 
-With Yjs, the Convex component can merge updates server-side, validate consistency, and compute diffs. With Loro, the server becomes a dumb byte store—it can't participate in CRDT operations because Loro's Rust implementation isn't available in the Convex runtime.
-
-This breaks the service-authoritative model we needed.
-
-### 2. Speed in the Wrong Context
-
-Loro's benchmarks are impressive—Fugue's non-interleaving guarantees and Peritext's rich text merging are genuinely innovative. But these benefits shine in:
-- **Rust-native applications** where you're not crossing WASM boundaries
-- **Peer-to-peer architectures** where there's no central server
-- **Rich text editors** with complex formatting requirements
-
-Our architecture is different:
-- **JavaScript clients** crossing WASM boundaries on every operation
-- **Service-authoritative** with Convex as the source of truth
-- **Structured documents** (forms, records) not rich text editors
-
-The overhead of WASM serialization on every operation negated Loro's speed advantages. Yjs, being pure JavaScript, integrates seamlessly without boundary-crossing costs.
-
-### 3. Compaction Complexity
-
-The compaction story revealed the deepest mismatch. Compare the schemas:
-
-```typescript
-// Yjs (cursor branch): Server can work with stateVector
-snapshots: defineTable({
-  stateVector: v.bytes(),   // Server can use this for recovery sync
-  snapshotBytes: v.bytes(),
-})
-
-// Loro: Server stores opaque frontiers
-snapshots: defineTable({
-  frontiers: v.bytes(),     // Server can't interpret this
-  bytes: v.bytes(),
-})
-```
-
-With Yjs, when a client reconnects after being offline, the server can compute exactly what updates the client is missing using state vector diffing. With Loro, the server has to send everything since the last snapshot—it can't compute a diff because frontiers are opaque.
-
-## The Lesson
-
-Loro is an excellent library—for the right context. Its algorithms represent real advances in CRDT theory. But **context matters more than speed**:
-
-- If you're building a Rust-native collaborative editor: Loro is probably the right choice
-- If you're building a JavaScript service-authoritative sync layer: Yjs wins on integration, not benchmarks
-
-The `loro` branch remains in the repository as a reminder that choosing tools requires understanding your architecture's constraints, not just reading benchmark numbers.
-
----
-
-# Component Authoring: Reverse Engineering the Future
-
-One of the more surreal aspects of building Replicate was that we shipped version 1.0.0 *before* Convex publicly released their component authoring documentation.
-
-## The Pre-Public Challenge
-
-Convex components are a brilliant abstraction: self-contained modules with their own database tables, isolated function execution, and clean composition. When Convex announced components, the R2 storage component was one of the examples. But the authoring guide wasn't public yet.
-
-We wanted to build Replicate as a proper component—not a library, not a bunch of copy-paste code, but a true component that developers could install with `bun add` and mount with `app.use()`. So we reverse-engineered it.
-
-The process:
-1. Clone the Convex R2 component example
-2. Study the file structure and configuration patterns
-3. Strip out R2-specific code, insert our CRDT sync logic
-4. Regenerate the build system through trial and error
-5. Test by mounting in a real application
-
-This was before `npx convex codegen --component-dir` was documented. Before the authoring guide explained the `convex.config.ts` anatomy. We were cargo-culting from examples and praying.
-
-The payoff was worth it. When Convex did release component authoring publicly, Replicate was already compatible. We'd guessed correctly on the patterns that would become standard.
-
-## Build System Evolution
-
-The build tooling for components went through its own journey, each phase teaching us something about the trade-offs in TypeScript library development:
-
-### Phase 1: tsc (TypeScript Compiler)
-
-Just the TypeScript compiler. Simple and correct, but:
-- **Slow**: Full type-checking on every build
-- **No bundling**: Outputs many small files
-- **No optimization**: No tree-shaking, no minification
-- **Dual output pain**: Generating both ESM and CJS required separate configs
-
-```json
-// tsconfig.json (Phase 1)
-{
-  "compilerOptions": {
-    "outDir": "./dist",
-    "declaration": true,
-    "declarationMap": true
-  }
-}
-```
-
-### Phase 2: rslib/rsbuild
-
-Moved to Rslib (built on Rspack, the Rust-based Webpack alternative) for proper bundling:
-
-```
-142d04b: "feat: migrate core to Rslib and externalize Automerge as peer dependency"
-```
-
-Benefits:
-- **Fast**: Rspack is significantly faster than Webpack
-- **Dual ESM/CJS**: Native support for both module formats
-- **Tree-shaking**: Dead code elimination
-- **Externalization**: Peer dependencies excluded from bundle
+**Phase 3: tsdown**
+The winner. Built on esbuild, with sensible defaults and clean DTS (declaration file) bundling.
 
 ```javascript
-// rslib.config.js (Phase 2)
-export default {
-  lib: [
-    { format: 'esm', syntax: 'es2021' },
-    { format: 'cjs', syntax: 'es2019' }
-  ],
-  output: {
-    externals: ['yjs', '@convex/component']
-  }
-};
-```
-
-### Phase 3: tsdown
-
-Eventually settled on tsdown—a simpler alternative with excellent defaults:
-
-```
-7d9dbbd: "refactor: migrate to tsdown and simplify convexCollectionOptions API"
-```
-
-Why tsdown won:
-- **Minimal configuration**: Sensible defaults for library authoring
-- **Fast builds**: Uses esbuild under the hood
-- **Clean DTS**: Proper TypeScript declaration bundling
-- **Watch mode**: Fast iteration during development
-
-```javascript
-// tsdown.config.js (Phase 3)
+// tsdown.config.js - the simplicity we needed
 export default {
   entry: ['src/index.ts', 'src/client.ts', 'src/server.ts'],
   format: ['esm', 'cjs'],
@@ -763,969 +536,801 @@ export default {
 };
 ```
 
-The lesson: start simple (tsc), add complexity when needed (rslib), then simplify when you understand your requirements (tsdown).
+We also consolidated the package structure. Early versions had a messy monorepo with separate packages for client, server, and shared code. The final version is a unified `@trestleinc/replicate` with clear entry points:
 
-## Package Consolidation
-
-The repository structure also evolved:
-
-**Early: Separate Packages**
-- `@trestleinc/convex-replicate-component` - Convex component
-- `@trestleinc/convex-replicate-core` - Client utilities
-- `@trestleinc/convex-replicate-react` - React bindings
-
-**Current: Unified Package**
-- `@trestleinc/replicate` - Everything, with entry points (`/client`, `/server`, `/convex.config`)
-
+```typescript
+import { replicate } from '@trestleinc/replicate';           // Server
+import { collection } from '@trestleinc/replicate/client';   // Client
 ```
-480da8f: "refactor!: merge component and core packages into unified @trestleinc/replicate"
-05e7eae: "refactor: flatten monorepo structure (packages/replicate → root)"
-```
-
-The consolidation reduced confusion (one package to install, one version to track) and simplified the build process.
 
 ---
 
-# The API Evolution: From Boilerplate to Elegance
+## The API Evolution: From Boilerplate to Elegance
 
-One of the less visible but most important aspects of the project was the API design journey. The API went through four distinct phases, each teaching us something about developer experience.
+We went through four major phases of API design, each one getting closer to that "Linear feel" Francis demanded.
 
-## Phase 1: The Automerge Era (Direct Component Calls)
+### Phase 1: The Automerge Era (Direct Component Calls)
 
-In the earliest Automerge implementation, there was no server-side wrapper at all. Developers called the component's mutations directly:
+In the beginning, developers had to call component mutations directly and manage their own sync state:
 
 ```typescript
-// Automerge era: direct component mutations
-// packages/storage/src/component/public.ts
+// Phase 1: Manual everything
+const syncAdapter = new SyncAdapter(convexClient, components.replicate);
 
-export const submitSnapshot = mutation({
-  args: {
-    collectionName: v.string(),
-    documentId: v.string(),
-    data: v.bytes(),
-  },
-  handler: async (ctx, args) => {
-    // Hash-based deduplication
-    const hash = generateHash(args.data);
-    // ... store in documents table
+// Insert a document
+await syncAdapter.insertDocument('tasks', {
+  id: crypto.randomUUID(),
+  title: 'New task',
+  completed: false,
+});
+
+// Subscribe to changes
+syncAdapter.subscribe('tasks', (docs) => {
+  setTasks(docs);
+});
+
+// Handle offline queue manually
+syncAdapter.flushPendingChanges();
+```
+
+This was powerful but exhausting. Every feature required understanding the sync internals.
+
+### Phase 2: The Yjs Rewrite (Helper Functions)
+
+After switching to Yjs, we added helper functions to reduce boilerplate:
+
+```typescript
+// Phase 2: Helpers, but still verbose
+import { insertDocumentHelper, subscribeHelper } from '@trestleinc/replicate';
+
+const unsubscribe = subscribeHelper(
+  convexClient,
+  components.replicate,
+  'tasks',
+  { onUpdate: setTasks }
+);
+
+await insertDocumentHelper(
+  convexClient,
+  components.replicate,
+  'tasks',
+  { id: crypto.randomUUID(), title: 'New task' }
+);
+```
+
+Better, but you still had to pass the same arguments (convexClient, components.replicate, collection name) to every function.
+
+### Phase 3: The Factory Pattern
+
+The breakthrough came when we realized we could bind configuration once and reuse it:
+
+```typescript
+// Phase 3: Factory pattern
+// In convex/replicate.ts
+const r = replicate(components.replicate);
+
+export const tasks = r.collection<Task>({
+  name: 'tasks',
+  schema: taskSchema,
+  hooks: {
+    beforeWrite: async (ctx, doc) => {
+      // Authorization logic
+      const user = await ctx.auth.getUserIdentity();
+      if (!user) throw new Error('Unauthorized');
+      return { ...doc, userId: user.subject };
+    },
   },
 });
 
-export const submitChange = mutation({ /* similar */ });
-export const submitBatch = mutation({ /* batch operations */ });
-export const pullChanges = query({ /* checkpoint-based sync */ });
-export const changeStream = query({ /* reactive stream metadata */ });
+// In client code
+import { tasks } from '../convex/replicate';
+
+// Now it's clean
+const allTasks = tasks.useQuery();
+await tasks.insert({ title: 'New task' });
+await tasks.update(id, { completed: true });
 ```
 
-The client used a `SyncAdapter` class:
+### Phase 4: The Collection Pattern (Current)
+
+The final refinement focused on TanStack-style familiarity and Zod integration:
 
 ```typescript
-// Client-side adapter class
-export class SyncAdapter<T extends { id: string }> {
-  async start(): Promise<void> {
-    await this.pull();
-    this.pushInterval = setInterval(() => void this.push(), 5000);
-    this.unsubscribe = this.client.onUpdate(
-      this.api.changeStream,
-      { collectionName: this.collectionName },
-      () => void this.pull()
-    );
-  }
-
-  stop(): void {
-    if (this.pushInterval) clearInterval(this.pushInterval);
-    if (this.unsubscribe) this.unsubscribe();
-  }
-
-  private async push(): Promise<void> {
-    const dirty = this.store.getDirty();
-    await this.client.mutation(this.api.submitBatch, { operations: dirty });
-  }
-}
-```
-
-This worked, but developers had to:
-- Understand the component's internal mutations
-- Manage the sync adapter lifecycle manually
-- Handle checkpoint tracking themselves
-- Wire up push/pull logic
-
-## Phase 2: The Yjs Rewrite (Helper Functions)
-
-After migrating to Yjs, we introduced server-side helper functions:
-
-```typescript
-// Yjs era: helper functions
-// packages/replicate/src/component/public.ts
-
-export const insertDocument = mutation({
-  args: {
-    collectionName: v.string(),
-    documentId: v.string(),
-    crdtBytes: v.bytes(),
-    version: v.number(),
-  },
-  handler: async (ctx, args) => { /* ... */ },
-});
-
-export const updateDocument = mutation({ /* ... */ });
-export const deleteDocument = mutation({ /* ... */ });
-export const stream = query({ /* incremental sync */ });
-```
-
-And server helpers to call them:
-
-```typescript
-// Server helpers for user code
-export {
-  insertDocumentHelper,
-  updateDocumentHelper,
-  deleteDocumentHelper,
-  streamHelper,
-} from './replication.js';
-```
-
-Better—developers had cleaner primitives. But still verbose for common use cases.
-
-## Phase 3: The Factory Pattern
-
-The factory pattern unified configuration:
-
-```typescript
-// Factory pattern: bind once, reuse
-import { replicate } from '@trestleinc/replicate/server';
-import { components } from './_generated/api';
+// Server: Define the collection
+import { replicate } from '@trestleinc/replicate';
+import { z } from 'zod';
 
 const r = replicate(components.replicate);
 
-export const tasks = r<Task>({
-  collection: 'tasks',
-  compaction: { retention: 5_000_000 },
-  hooks: {
-    evalWrite: async (ctx, doc) => { /* authorization */ },
-    onInsert: async (ctx, doc) => { /* side effects */ },
-  },
-});
-
-// Returns: { stream, material, insert, update, remove, versions, compact, ... }
-```
-
-```
-704b549: "refactor: simplify server API to factory pattern with replicate()"
-```
-
-One function call, one configuration object, all operations returned.
-
-## Phase 4: Nested Object Pattern
-
-We refined the exports for better discoverability:
-
-```typescript
-// Nested exports for cleaner imports
-export { replicate } from '$/server/builder.js';
-
-export const schema = {
-  table,
-  prose,
-} as const;
-```
-
-```
-dae9314: "feat: refactor API to nested object pattern"
-```
-
-## Current API: collection.create()
-
-The current API uses Zod schemas for validation and a clean creation pattern:
-
-```typescript
-// convex/schema.ts
-import { schema } from "@trestleinc/replicate/server";
-
-export default defineSchema({
-  tasks: schema.table({
-    id: z.string(),
-    text: z.string(),
-    isCompleted: z.boolean(),
+export const tasks = r.collection({
+  name: 'tasks',
+  schema: z.object({
+    id: z.string().uuid(),
+    title: z.string().min(1),
+    completed: z.boolean().default(false),
+    createdAt: z.number().default(() => Date.now()),
   }),
 });
 
-// convex/tasks.ts
-import { replicate } from "@trestleinc/replicate/server";
-
-export const tasks = replicate(components.replicate).collection("tasks", {
-  compaction: { threshold: 5_000_000 },
-});
-```
-
-And on the client:
-
-```typescript
-// Client: collection creation with type safety
-import { collection } from "@trestleinc/replicate/client";
+// Client: Use it like TanStack Query
+import { collection } from '@trestleinc/replicate/client';
+import { api } from '../convex/_generated/api';
 
 const tasks = collection.create({
   api: api.tasks,
   getKey: (task) => task.id,
 });
 
-// Usage
-tasks.insert({ id: uuid(), text: "New task", isCompleted: false });
-tasks.update(id, (draft) => { draft.isCompleted = true });
-tasks.delete(id);
+// React hook usage
+function TaskList() {
+  const { data: allTasks, isLoading } = tasks.useQuery();
+  
+  const handleAdd = async () => {
+    await tasks.insert({
+      id: crypto.randomUUID(),
+      title: 'New task',
+    });
+  };
+  
+  const handleToggle = async (id: string) => {
+    await tasks.update(id, (draft) => {
+      draft.completed = !draft.completed;
+    });
+  };
+  
+  // Immer-style updates just work
+}
 ```
 
-```
-2b76731: "feat: add SSR material prefetch and refactor collection.create() API"
-```
-
-The evolution prioritized:
-- **Fewer imports** - Don't make users import from generated files
-- **Type inference** - Let TypeScript do the work
-- **Zod integration** - Validation at runtime, not just types
-- **Familiar patterns** - TanStack-style APIs that React developers recognize
+The API finally felt right. Familiar patterns from TanStack Query. Type safety from Zod. Immer-style draft updates. No boilerplate.
 
 ---
 
-# The ProseMirror Challenge
+## The ProseMirror Challenge: Rich Text Nearly Broke Everything
 
-Adding rich text support revealed a hidden complexity in our sync architecture.
+Forms were easy. Text fields were easy. Then we tried to add rich text editing with ProseMirror, and everything fell apart.
 
-## The Sync Loop Problem
+The problem: ProseMirror maintains its own internal state (EditorState). Yjs maintains its own state (Y.Doc). TanStack Query maintains its own cache. React maintains its own component state. That's **four** sources of truth that all need to agree.
 
-TanStack DB has a clean reactive loop: collection changes → re-render → user sees update. Yjs integrates naturally—when the Y.Doc changes, TanStack DB's collection updates, React re-renders.
+When a user types a single character, here's what happens:
 
-ProseMirror (and its derivatives like TipTap and BlockNote) doesn't fit this model. ProseMirror maintains its own internal document state. When you type, ProseMirror updates its state, then emits a transaction. The editor owns its state.
-
-This creates a conflict with three competing sources of truth:
-1. **Yjs Y.Doc** - The CRDT state, source of truth for sync
-2. **ProseMirror EditorState** - The editor's internal state, source of truth for rendering
-3. **TanStack DB Collection** - The reactive cache, source of truth for React
-
-If we're not careful, we get infinite loops or dropped updates:
-
-```
-User types "A"
-→ ProseMirror updates its state
-→ y-prosemirror binding updates Y.Doc
-→ Y.Doc triggers Yjs observer
-→ Observer updates TanStack DB
-→ TanStack DB triggers React re-render
-→ React re-renders ProseMirror component
-→ ProseMirror sees "new" state
-→ Wait, is this a change? Let me update again...
-→ INFINITE LOOP
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant PM as ProseMirror
+    participant YB as Y.js Binding
+    participant YD as Y.Doc
+    participant OB as Observer
+    participant RQ as React/TanStack
+    
+    U->>PM: Type "A"
+    PM->>PM: Update EditorState
+    PM->>YB: Dispatch transaction
+    YB->>YD: Update Y.XmlFragment
+    YD->>OB: Trigger observer
+    OB->>RQ: Update React state
+    RQ->>PM: Re-render with new props
+    PM->>PM: "Oh, new props! A change!"
+    PM->>YB: Dispatch transaction (LOOP!)
 ```
 
-## XmlFragment: The Special Type
+**The Infinite Loop:**
 
-Rich text in Yjs uses `Y.XmlFragment`—a special type designed for hierarchical document structures. Unlike regular `Y.Map` fields, XmlFragments:
+1. User types "A" → ProseMirror updates its EditorState
+2. ProseMirror binding pushes the change to Y.Doc
+3. Y.Doc triggers its update observer
+4. Observer updates TanStack/React state
+5. React re-renders the ProseMirror component with new props
+6. ProseMirror sees "new" props and thinks there's a change
+7. ProseMirror dispatches a transaction
+8. **GOTO step 2**
 
-- Preserve document hierarchy (paragraphs, headings, lists)
-- Handle nested elements correctly
-- Support formatting spans with proper merge semantics
-- Must be "bound" to a Y.Doc before use
+The browser would freeze. Sometimes it would crash. The console would fill with thousands of log entries per second.
 
-That last point caused bugs:
+### The Fix: Origin Tracking
+
+The solution was to tag every update with its origin and use that to break the cycle:
 
 ```typescript
-// WRONG: XmlFragment used before binding
+// Custom hook for ProseMirror + Yjs integration
+function useProseMirrorYjs(fieldName: string) {
+  const yDoc = useYDoc();
+  const [editor, setEditor] = useState<Editor | null>(null);
+  
+  // Debounced sync to prevent flooding
+  const debouncedSync = useMemo(
+    () => debounce((field: string) => {
+      const fragment = yDoc.getXmlFragment(field);
+      const bytes = Y.encodeStateAsUpdate(yDoc);
+      syncToServer(bytes);
+    }, 300),
+    [yDoc]
+  );
+  
+  useEffect(() => {
+    if (!editor) return;
+    
+    // Listen for Y.Doc changes
+    const handleUpdate = (update: Uint8Array, origin: unknown) => {
+      // CRITICAL: If the change came from local editing, don't re-apply it
+      if (origin === 'prosemirror-local') {
+        return;
+      }
+      
+      // Only sync changes from network/other sources
+      debouncedSync(fieldName);
+    };
+    
+    yDoc.on('update', handleUpdate);
+    return () => yDoc.off('update', handleUpdate);
+  }, [editor, yDoc, fieldName, debouncedSync]);
+  
+  // When ProseMirror dispatches a transaction, tag it
+  const handleTransaction = useCallback((tr: Transaction) => {
+    // Tag this as a local change so the observer ignores it
+    yDoc.transact(() => {
+      // Apply to Y.Doc
+      const fragment = yDoc.getXmlFragment(fieldName);
+      // ... update fragment based on transaction
+    }, 'prosemirror-local'); // <-- Origin tag
+  }, [yDoc, fieldName]);
+  
+  return { editor, handleTransaction };
+}
+```
+
+### The Y.XmlFragment Binding Trap
+
+There was another gotcha that cost me a full day of debugging: you cannot write to a `Y.XmlFragment` before it's bound to a `Y.Doc`.
+
+```typescript
+// THIS CRASHES
 const fragment = new Y.XmlFragment();
-fragment.insert(0, [new Y.XmlText("Hello")]);  // Error!
+fragment.insert(0, [new Y.XmlText('hello')]); // 💥 Error
 
-// CORRECT: Fragment must be in a doc first
+// THIS WORKS
 const doc = new Y.Doc();
-const fragment = doc.getXmlFragment("content");  // Now it's bound
-fragment.insert(0, [new Y.XmlText("Hello")]);    // Works!
+const fragment = doc.getXmlFragment('content');
+fragment.insert(0, [new Y.XmlText('hello')]); // ✅ OK
 ```
 
-```
-75c7f74: "fix: serialize Y.XmlFragment correctly on insert mutations"
-cad5178: "fix: ensure XmlFragments are bound to Y.Doc before populating content"
-```
+The error message was unhelpful ("Cannot read property 'doc' of null"). I only figured it out by reading the Yjs source code.
 
-## The Solution: Custom Sync Triggers
+### ProseMirror Integration Lessons
 
-We extracted prose sync to a separate module with document-level tracking:
-
-```
-a30969c: "wip: extract prose sync to separate module with document-level tracking"
-622cd42: "fix: prevent prose field corruption in subscription update cycle"
-```
-
-The pattern:
-
-1. **ProseMirror changes emit to Yjs** via y-prosemirror binding
-2. **Yjs changes are debounced** before syncing to Convex
-3. **Sync writes to Convex**, which updates the subscription
-4. **Subscription updates are filtered** to avoid round-tripping local changes
-
-```typescript
-// Prose-specific debounce configuration
-const PROSE_DEBOUNCE_MS = 300;  // Batch rapid keystrokes
-
-const debouncedSync = debounce((fieldName: string) => {
-  const fragment = doc.getXmlFragment(fieldName);
-  const bytes = Y.encodeStateAsUpdate(doc);
-  syncToServer(bytes);
-}, PROSE_DEBOUNCE_MS);
-
-// Skip updates that originated locally
-doc.on('update', (update, origin) => {
-  if (origin === 'local') return;  // Skip our own changes
-  debouncedSync(fieldName);
-});
-```
-
-We also added debouncing specifically for prose fields—text editing generates many small changes in rapid succession, and batching them reduces sync overhead and prevents network saturation.
+1. **Always use origin tracking** for any bidirectional binding
+2. **Debounce sync operations** to batch rapid changes
+3. **Initialize Y.XmlFragment through Y.Doc.getXmlFragment()**, never directly
+4. **Test with rapid typing** - if you can't type "hello world" without lag, something is wrong
+5. **Watch for memory leaks** - every observer needs a cleanup function
 
 ---
 
-# The Cursor Problem
+## The Cursor Problem: Timestamps Are a Lie
 
-This is where things got interesting. And by interesting, I mean the kind of interesting that makes you question your career choices.
+We thought we were done.
 
-## The Discovery
+The sync worked. Rich text worked. Offline persistence worked. ProseMirror was tamed. I was mentally writing the "Replicate 1.0" announcement in my head.
 
-We were seeing occasional sync issues. Documents that should have synced weren't showing up. The issue was intermittent and hard to reproduce—the worst kind of bug.
+Then data started disappearing.
 
-I opened a GitHub issue on the Convex community, and Ian (from the Convex team) dropped knowledge that changed everything:
+Not all data. Not consistently. Just... sometimes, a change would be made, synced to the server, and another client would never see it. Ghost data. The worst kind of bug—the kind that happens "sometimes."
 
-> "Currently the 'check if there are new changes' uses the previous `_creationTime` as the cursor. Unfortunately, the previous query could have fetched results before an in-progress mutation commits, which could have started prior to what the latest document's `_creationTime` shows, meaning the next check will miss the commit."
+I spent a week adding logging. Tracing sync operations. Comparing local and server state byte by byte. The data was definitely being written to the server. I could see it in the database. Other clients were definitely querying for it. The query was correct. But they weren't seeing it.
 
-In other words: **`_creationTime` is not monotonic**.
+I was losing my mind.
 
-## Why _creationTime Can Be Out of Order
+[@ianmacartney](https://x.com/ianmacartney) from the Convex team diagnosed the problem. The conversation is preserved in [GitHub issue #2](https://github.com/trestleinc/replicate/issues/2).
 
-Convex uses **MVCC (Multi-Version Concurrency Control)** with **OCC (Optimistic Concurrency Control)**. Understanding this is crucial to understanding the bug.
+**The root cause: In MVCC/OCC systems, `_creationTime` is not monotonic.**
 
-### MVCC: Multiple Versions Exist Simultaneously
+### The MVCC Trap Explained
 
-MVCC allows readers and writers to operate without blocking each other. When you read data, you see a consistent "snapshot" of the database at a particular point in time. When you write, you're creating a new version that will become visible to future readers.
+Convex uses Optimistic Concurrency Control (OCC), a variant of Multi-Version Concurrency Control (MVCC). Here's how it works:
 
-This is great for performance—reads never block writes, writes never block reads.
+1. A mutation starts and gets a timestamp based on when it **started** executing
+2. The mutation runs (database reads, business logic, database writes)
+3. At commit time, Convex checks if any data the mutation read has changed
+4. If no conflicts, the mutation commits with its original timestamp
 
-### OCC: Optimistic Concurrency Control
+The problem: a mutation that starts early but runs slowly can commit **after** a mutation that started later but ran quickly. The slow mutation keeps its early timestamp.
 
-Convex mutations run optimistically. Multiple mutations can execute in parallel:
-
-1. Mutation starts, reads its data
-2. Mutation does its work
-3. Mutation attempts to commit
-4. If no conflicts with other committed mutations, success
-5. If conflicts detected, automatic retry
-
-This is also great for throughput. But it means mutations don't commit in the order they started.
-
-### The Timestamp Gap
-
-Here's the problem visualized:
-
-```
-Time 0ms: Mutation A starts
-          A reads data, begins work
-          A will use _creationTime = 1000
-
-Time 1ms: Mutation B starts  
-          B reads data, begins work (fast operation)
-          B will use _creationTime = 999  // Started later, but faster!
-
-Time 2ms: Mutation B commits (_creationTime = 999)
-          B is now visible to queries
-
-Time 3ms: Client queries: "Give me docs where _creationTime > 998"
-          Client sees: Mutation B (999)
-          Client cursor now = 999
-
-Time 4ms: Mutation A finally commits (_creationTime = 1000)
-          A is now visible to queries
-
-Time 5ms: Client queries: "Give me docs where _creationTime > 999"
-          Client sees: Nothing new! A has _creationTime = 1000, but wait...
-          
-Actually A has _creationTime = 1000 which is > 999, so we should see it.
-But if A's _creationTime was set BEFORE B's even though A committed AFTER...
-
-The real issue: _creationTime is set when the mutation STARTS, not when it COMMITS.
+```mermaid
+sequenceDiagram
+    participant MA as Mutation A (slow)
+    participant MB as Mutation B (fast)
+    participant DB as Database
+    participant C as Client
+    
+    Note over MA,MB: A starts at T=1000
+    MA->>DB: Begin transaction
+    Note over MB,DB: B starts at T=1001
+    MB->>DB: Begin transaction
+    MB->>DB: Commit (T=1001)
+    Note over DB,C: Client sets cursor=1001
+    MA->>DB: Commit (keeps T=1000!)
+    Note over DB,C: Client: WHERE T > 1001
+    Note over MA,C: 💥 Mutation A is INVISIBLE
 ```
 
-Ian's note about the theoretical maximum skew: **up to 4 minutes**, though usually not more than seconds. This is based on mutation timeout limits and retry windows.
+Our sync logic was:
+```typescript
+// BROKEN: Timestamp-based cursor
+const changes = await ctx.db
+  .query('documents')
+  .withIndex('by_timestamp', q => q.gt('timestamp', lastSyncedTimestamp))
+  .collect();
+```
 
-For most applications, you'd never notice. Mutations usually complete quickly and in rough order. But for a sync system that depends on "give me everything after timestamp X," even occasional gaps cause data loss.
+If Mutation A had timestamp 1000 but committed after the client synced at 1001, the client would never see it. The change was a ghost.
 
-## The Version Number Solution
+### The Fix: Explicit Sequence Numbers
 
-Ian pointed to his prosemirror-sync component's approach:
+We abandoned system timestamps entirely. Instead, we implemented strictly monotonic sequence numbers:
 
 ```typescript
-// prosemirror-sync schema
-defineTable({
-  // ...
-  version: v.number(),  // Monotonically increasing
-})
-
 // In the mutation
-const currentVersion = await ctx.db
-  .query("documents")
-  .order("desc")
-  .first()
-  ?.version ?? 0;
+const currentSeq = await ctx.db
+  .query('documents')
+  .withIndex('by_seq')
+  .order('desc')
+  .first();
 
-await ctx.db.insert("documents", {
-  // ...
-  version: currentVersion + 1,  // Explicit increment
+const nextSeq = (currentSeq?.seq ?? 0) + 1;
+
+await ctx.db.insert('documents', {
+  ...documentData,
+  seq: nextSeq,
+  // Keep timestamp for debugging, but don't use for sync
+  timestamp: Date.now(),
 });
 ```
 
-Instead of relying on `_creationTime`, use a version number that's explicitly incremented within the transaction. This creates a **total ordering guarantee**—version 5 always comes after version 4.
-
-### The Trade-off: Serialization
-
-The trade-off is that concurrent inserts need to be serialized. If two mutations both try to increment the version:
-
-```
-Mutation A: reads version = 5, will write version = 6
-Mutation B: reads version = 5, will write version = 6
-
-Both try to commit with version = 6
-Convex OCC detects conflict (both read version 5, both writing)
-One mutation retries with fresh read
-Result: A gets version 6, B (after retry) gets version 7
+```typescript
+// FIXED: Sequence-based cursor
+const changes = await ctx.db
+  .query('documents')
+  .withIndex('by_seq', q => q.gt('seq', lastSyncedSeq))
+  .collect();
 ```
 
-Convex's OCC will detect the conflict and retry one of them. This can cause write conflicts during contentious writes.
+**The tradeoff:** This serializes writes. Two concurrent mutations can't both increment the sequence number; one will fail and retry. This reduces write throughput.
 
-For most sync applications, this is fine. Sync operations aren't as contentious as, say, a real-time voting counter where thousands of users increment simultaneously. The occasional retry is worth the consistency guarantee.
-
-### Why Not Just Use _id?
-
-You might think: "Convex's `_id` is monotonically increasing, right?"
-
-Actually, no. Convex IDs are designed for uniqueness, not ordering. They use a scheme that ensures global uniqueness across shards and time, but doesn't guarantee temporal ordering.
-
-## The cursor Branch
-
-We're implementing cursor-based sync with peer tracking in the `cursor` branch:
-
-```
-f62500d: "feat: implement cursor-based sync with peer tracking"
-7ed7ec6: "feat: update client for cursor-based sync with peer tracking"
-22ab876: "refactor: migrate sync protocol from checkpoint to cursor-based system"
-```
+**Was it worth it?** Absolutely. Data consistency is non-negotiable. A slight reduction in write throughput is infinitely better than silent data loss.
 
 ### Peer Tracking
 
-Peer tracking adds another dimension: not just "what version did we sync to?" but "which peers have acknowledged which versions?" This enables smarter compaction—we can safely delete old deltas once all active peers have confirmed receipt.
+With sequence numbers in place, we added peer tracking so clients could report their progress:
 
 ```typescript
-// Server tracks peer progress
-peers: defineTable({
-  peerId: v.string(),
-  lastMarkedVersion: v.number(),
-  lastSeenAt: v.number(),
-})
-
-// Client marks progress
+// When a client processes changes up to seq 500
 await ctx.runMutation(api.replicate.mark, {
   peerId: clientId,
-  version: lastProcessedVersion,
+  seq: 500,
+});
+
+// Server tracks this in a peers table
+peers: defineTable({
+  peerId: v.string(),
+  collection: v.string(),
+  lastSyncedSeq: v.number(),
+  lastSeenAt: v.number(),
+}).index('by_peer', ['peerId', 'collection'])
+```
+
+This enabled safe compaction (which we'll discuss next) and gave us visibility into sync health.
+
+---
+
+## Compaction: The Distributed Garbage Collection Problem
+
+The event log grows forever. Every change, every sync, adds entries. Left unchecked, the log would consume unlimited storage and make initial syncs increasingly slow.
+
+But you can't just delete old entries. What if a client has been offline for a week and needs those entries to catch up?
+
+**Compaction is not a storage problem. It's a distributed consensus problem.**
+
+### First Attempt: Naive Time-Based Compaction
+
+Our first approach: delete entries older than 7 days. Simple, predictable, wrong.
+
+```typescript
+// DON'T DO THIS
+const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+await ctx.db
+  .query('documents')
+  .filter(q => q.lt(q.field('timestamp'), oneWeekAgo))
+  .collect()
+  .then(docs => docs.forEach(doc => ctx.db.delete(doc._id)));
+```
+
+What happens when a client goes offline for 8 days? Their laptop is closed, they go on vacation, they come back. They try to sync.
+
+The entries they need are gone. Their local state diverges permanently from the server. They're corrupted.
+
+### Second Attempt: Size-Based Compaction
+
+Maybe we compact when total size exceeds 5MB?
+
+```typescript
+// ALSO WRONG
+const totalSize = await calculateLogSize(ctx);
+if (totalSize > 5_000_000) {
+  await compactOldestEntries(ctx, targetSize: 2_000_000);
+}
+```
+
+Same problem. Size doesn't tell you which clients have seen which entries.
+
+### The Solution: Peer-Tracking Compaction
+
+The only safe approach: track what every peer has seen, and only delete entries that ALL active peers have acknowledged.
+
+```typescript
+// Get the minimum seq that all active peers have synced
+const activePeers = await ctx.db
+  .query('peers')
+  .filter(q => q.gt(q.field('lastSeenAt'), Date.now() - STALE_THRESHOLD))
+  .collect();
+
+const minSyncedSeq = Math.min(...activePeers.map(p => p.lastSyncedSeq));
+
+// Only delete entries that everyone has seen
+const safeToDelete = await ctx.db
+  .query('documents')
+  .withIndex('by_seq', q => q.lt('seq', minSyncedSeq))
+  .collect();
+
+for (const doc of safeToDelete) {
+  await ctx.db.delete(doc._id);
+}
+```
+
+**What about stale peers?** If a peer hasn't been seen in (configurable) 30 days, we mark them stale. When they reconnect, they get a full re-sync instead of an incremental update.
+
+```typescript
+// Handling stale peer reconnection
+const peer = await ctx.db
+  .query('peers')
+  .withIndex('by_peer', q => q.eq('peerId', clientId))
+  .unique();
+
+if (!peer || peer.lastSeenAt < Date.now() - STALE_THRESHOLD) {
+  // Peer is stale, force full resync
+  return { fullResync: true, snapshot: await getFullSnapshot(ctx) };
+}
+
+// Peer is active, send incremental changes
+return { 
+  fullResync: false, 
+  changes: await getChangesSince(ctx, peer.lastSyncedSeq) 
+};
+```
+
+This is distributed garbage collection. It's not glamorous, but it's essential.
+
+### The Loro Tangent: Why I Almost Switched (Again)
+
+While wrestling with compaction and shallow copies, I started wondering if there was a better way. Yjs snapshots are efficient, but what if another CRDT library had better primitives for this exact problem?
+
+You know that thing engineers do where they have a working solution but then spend two days exploring a "better" one? That's definitely productive research and not procrastination. Definitely.
+
+I spent two days on the `loro` branch, convinced that Loro's advanced algorithms would give us an edge. Loro is a high-performance Rust library with sophisticated conflict resolution:
+
+- **Fugue**: An algorithm that minimizes interleaving artifacts in collaborative text editing
+- **Peritext**: Rich text CRDT that preserves formatting intent across merges
+
+I built a complete adapter layer:
+
+```typescript
+// From loro/adapter.ts
+export interface LoroAdapter {
+  createDoc(peerId?: string): LoroDocHandle;
+  import(doc: LoroDocHandle, bytes: Uint8Array): void;
+  export(doc: LoroDocHandle): Uint8Array;
+  applyDelta(doc: LoroDocHandle, delta: Uint8Array): void;
+  getText(doc: LoroDocHandle, key: string): string;
+  setText(doc: LoroDocHandle, key: string, value: string): void;
+  getFrontiers(doc: LoroDocHandle): Frontiers;
+  getState(doc: LoroDocHandle): LoroState;
+}
+```
+
+**Why we didn't ship it: Frontiers vs State Vectors.**
+
+Yjs uses state vectors that the server can mathematically manipulate. Given two state vectors, the server can compute exactly what changes one peer is missing without loading any CRDT state.
+
+Loro uses **Frontiers**—a different representation of "where am I in the document history." In our implementation, Frontiers were opaque bytes to the server.
+
+```typescript
+// Loro schema required opaque storage
+snapshots: defineTable({
+  frontiers: v.bytes(),  // Server stores but can't interpret these
+  data: v.bytes(),
+})
+```
+
+Without loading the WASM blob (which we were explicitly trying to avoid), the Convex server couldn't:
+- Compute diffs between two Frontier positions
+- Validate that a client's claimed Frontier was legitimate
+- Participate in CRDT merge operations
+
+The server became a "dumb store"—it could save and retrieve bytes, but couldn't do anything intelligent with them. This defeated much of the purpose of having a smart backend—and critically, it made compaction nearly impossible to reason about.
+
+**The lesson: context matters more than benchmarks.** Loro might be faster in raw CRDT operations, but Yjs's architecture was a better fit for our server-authoritative component model. Back to Yjs. Back to compaction that actually worked.
+
+---
+
+## React Native: Where Hope Goes to Die
+
+Web worked. Desktop worked. Then we tried to run on mobile.
+
+React Native looked at our code and laughed.
+
+The problem: we were using LevelDB (via `level` npm package) for local persistence. LevelDB relies on Node.js APIs:
+- `fs` for filesystem access
+- `Buffer` for binary data handling
+- `path` for file path manipulation
+
+React Native has none of these. It has its own filesystem APIs, its own binary handling, its own everything.
+
+We tried polyfills. We tried `react-native-leveldb`. We tried `level-js` with IndexedDB polyfills. Nothing worked reliably.
+
+### The Solution: SQLite with Swappable Persistence
+
+SQLite runs everywhere. Browser (via OPFS), iOS, Android, Electron. We rebuilt the persistence layer around SQLite with explicit platform configuration:
+
+```typescript
+// Persistence is explicitly configured, not auto-detected
+import { persistence } from '@trestleinc/replicate/client';
+
+// For Web (uses Origin Private File System)
+const webPersistence = await persistence.sqlite.browser(SQL, 'myapp');
+
+// For React Native (uses op-sqlite C++ bindings)
+import { open } from '@op-sqlite/op-sqlite';
+const db = open({ name: 'myapp.db' });
+const nativePersistence = await persistence.sqlite.native(db, 'myapp');
+
+// Initialize Replicate with the appropriate persistence
+const replicate = createReplicate({
+  convex: convexClient,
+  persistence: isWeb ? webPersistence : nativePersistence,
 });
 ```
 
-```
-a9b7782: "refactor: minimize public API surface and rename ack to mark"
-```
+**Why op-sqlite?** It's a direct C++ binding to SQLite, avoiding the JavaScript bridge overhead that plagues many React Native database solutions. Reads and writes are synchronous from the JavaScript perspective.
 
-The `mark` operation (formerly `ack`) lets clients signal which deltas they've processed. The server tracks this per-peer, enabling:
+**Why explicit configuration?** Auto-detection sounds convenient but causes problems:
+- Different bundlers handle platform detection differently
+- Some platforms (Electron) can support multiple persistence backends
+- Testing requires swapping persistence (in-memory for tests)
+- Explicit is better than implicit
 
-1. **Safe compaction**: Only delete deltas that ALL active peers have marked
-2. **Stale peer detection**: Peers that haven't marked in X days are considered inactive
-3. **Recovery optimization**: Know exactly what each peer is missing
+### Validation: The Airplane Mode Test
 
----
+The moment I knew it worked: I had an Expo app running on my phone, my iPad, and my laptop. All three showed the same task list.
 
-# The Final Hurdle: React Native
+I toggled airplane mode on the phone. Made changes. Watched them persist locally.
 
-Everything was working beautifully on the web. Then we tried React Native.
+Toggled airplane mode off. Watched the changes sync to the server. Watched them appear on the iPad and laptop within seconds.
 
-## The LevelDB Curse
+I did this ten times in a row, making changes on different devices in different offline states. It worked every time.
 
-Our persistence layer used LevelDB (via y-leveldb) for local storage. LevelDB is battle-tested, fast, and... depends on browser APIs that don't exist in React Native.
-
-The build would fail with cryptic errors about missing `fs` modules, `Buffer` polyfills, and native dependencies. React Native's JavaScript environment is similar to a browser but not identical—close enough to confuse tools, different enough to break them.
-
-```
-Error: Unable to resolve module `fs` from `node_modules/level/...`
-Error: Buffer is not defined
-Error: Cannot read property 'IDBFactory' of undefined
-```
-
-## SQLite to the Rescue
-
-The solution was to replace LevelDB with SQLite entirely:
-
-```
-f366136: "refactor: replace LevelDB with SQLite-only persistence"
-```
-
-SQLite is available everywhere:
-- **Browser**: via WASM (sql.js) or OPFS (Origin Private File System)
-- **React Native**: via native bindings (op-sqlite, expo-sqlite)
-- **Node**: via better-sqlite3
-
-We built a swappable persistence layer:
-
-```
-e2a236b: "refactor: add swappable persistence layer for React Native support"
-f366136: "refactor: replace LevelDB with SQLite-only persistence"
-```
-
-A key design decision: **persistence is explicitly configured, not auto-detected**. Auto-detection sounds convenient, but it adds complexity that doesn't belong in a sync library's boundaries. The developer knows their target platform—we shouldn't guess.
-
-```typescript
-// Explicit configuration - developer chooses their backend
-import { persistence } from '@trestleinc/replicate/client';
-
-// Browser: SQLite with OPFS (recommended for web)
-const p = await persistence.sqlite.browser(SQL, 'myapp');
-
-// React Native: Native SQLite bindings
-const p = await persistence.sqlite.native(db, 'myapp');
-
-// Browser fallback: IndexedDB
-const p = persistence.indexeddb('myapp');
-
-// Testing: In-memory
-const p = persistence.memory();
-```
-
-This explicit approach has advantages:
-- **No magic**: Developers understand exactly what storage is being used
-- **Smaller bundles**: Only import the adapter you need
-- **Predictable behavior**: No runtime detection edge cases
-- **Clear errors**: If the wrong adapter is used, it fails fast with a clear message
-
-## The Expo Example
-
-We built a complete Expo example app—an interval tracking application—to validate React Native support:
-
-```
-39053e2: "feat(expo): rewrite example with interval tracking app"
-f5f6cfc: "docs: add React Native setup instructions"
-3565e7e: "docs: update documentation for Expo example and API changes"
-```
-
-The interval tracker is a good test case because:
-- Users track time across sessions (persistence matters)
-- Multiple devices might track the same intervals (sync matters)
-- Network connectivity is unreliable during activities (offline matters)
-
-Watching the app sync across devices—phone to tablet, tablet to web—with no data loss was deeply satisfying after months of work.
+It was the first time in six months I actually relaxed.
 
 ---
 
-# Architecture Deep Dive
+## The Final Architecture
 
-Let me walk through the final architecture in detail.
-
-## Dual-Storage Pattern
+After 34 failed commits across multiple approaches, three complete rewrites, and countless debugging sessions, here is the architecture of **Replicate**:
 
 ```mermaid
 flowchart TB
-    subgraph CLIENT["Client"]
-        YDOC[Y.Doc<br/>CRDT State]
-        TANSTACK[TanStack DB<br/>Query Cache]
-        LOCAL[(SQLite<br/>Local Persistence)]
+    subgraph "Client Device"
+        UI[React/React Native UI]
+        TSQ[TanStack Query Cache]
+        YJS[Yjs CRDT Document]
+        SQLITE[(SQLite via OPFS/op-sqlite)]
+        
+        UI <-->|"Read (reactive)"| TSQ
+        UI <-->|"Write (optimistic)"| YJS
+        YJS <-->|"Persist locally"| SQLITE
     end
 
-    subgraph CONVEX["Convex Backend"]
-        EVENTS[(Event Log<br/>CRDT deltas + version)]
-        MATERIAL[(Main Table<br/>Materialized documents)]
+    subgraph "Convex Backend"
+        COMP[Replicate Component]
+        LOG[(Event Log<br/>CRDT deltas + seq)]
+        MAT[(Materialized View<br/>JSON documents)]
+        PEERS[(Peer Tracking<br/>sync cursors)]
+        
+        COMP -->|"1. Append delta"| LOG
+        COMP -->|"2. Materialize"| MAT
+        COMP -->|"3. Track progress"| PEERS
     end
 
-    YDOC <--> TANSTACK
-    YDOC <--> LOCAL
-    YDOC -->|"sync delta"| EVENTS
-    EVENTS -->|"materialize"| MATERIAL
-    MATERIAL -->|"subscription"| TANSTACK
-
-    style EVENTS fill:#e3f2fd
-    style MATERIAL fill:#c8e6c9
+    YJS -->|"sync(delta, cursor)"| COMP
+    COMP -->|"subscription"| TSQ
+    COMP -->|"mark(peerId, seq)"| PEERS
 ```
 
-**Why both storage layers?**
+### The Dual-Storage Pattern (CQRS)
 
-| Layer | Purpose | Properties |
-|-------|---------|------------|
-| Event Log | History, conflict resolution, recovery | Append-only, versioned, CRDT bytes |
-| Main Table | Queries, indexes, server logic | Current state, structured, fast lookups |
+We maintain two representations of data on the server:
 
-This is CQRS (Command Query Responsibility Segregation) applied to sync: the event log is the write model, the main table is the read model.
+**1. Event Log (Write Model)**
+An append-only log of CRDT binary deltas with sequence numbers. Used for:
+- Sync protocol (clients request changes since seq N)
+- Conflict resolution (merge deltas from multiple clients)
+- Recovery (replay history to reconstruct state)
+- Audit trail (who changed what, when)
 
-## Sync Protocol
+**2. Materialized View (Read Model)**
+Standard JSON documents derived from applying all deltas. Used for:
+- Fast queries (no CRDT decoding needed)
+- Server-side business logic (work with plain objects)
+- Initial load optimization (skip replaying full history)
+- Indexing and search
+
+This is CQRS (Command Query Responsibility Segregation) applied to sync.
+
+### Sync Protocol
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant Y as Yjs Doc
-    participant S as Convex
-    participant T as Main Table
+    participant S as Convex Server
+    participant L as Event Log
+    participant M as Materialized View
 
-    Note over C,Y: User edits offline
-    C->>Y: collection.update()
-    Y->>Y: Create CRDT delta
-    Y-->>C: Optimistic UI update
-
-    Note over Y,S: When online
-    Y->>S: stream(delta, cursor)
-    S->>S: Append to event log
-    S->>S: Increment version
-    S->>T: Upsert materialized doc
-    T-->>C: Subscription update
-    C->>S: mark(version)
+    Note over C,Y: User makes changes offline
+    C->>Y: updateText("Hello")
+    Y->>Y: Generate delta
+    Y-->>C: Persist to SQLite
+    
+    Note over Y,S: Client comes online
+    Y->>S: sync({ delta, cursor: lastSeq })
+    S->>S: Validate & authorize
+    S->>L: Append delta (seq: N+1)
+    S->>M: Apply delta to materialized view
+    S-->>C: { newSeq: N+1, serverChanges: [...] }
+    
+    Note over C,S: Other clients see changes
+    S-->>C: Subscription update
+    C->>Y: Apply server changes
+    Y-->>C: Update UI
+    
+    C->>S: mark({ peerId, seq: N+1 })
+    S->>S: Update peer tracking
 ```
 
-## Recovery Mechanism
+### Recovery and Conflict Resolution
 
-When a client reconnects after being offline:
+When a client has been offline and reconnects with divergent changes:
 
 ```mermaid
-sequenceDiagram
-    participant C as Client
-    participant S as Convex
-
-    Note over C,S: Recovery sync
-    C->>C: Encode local state vector
-    C->>S: recovery(stateVector, lastCursor)
-    S->>S: Compute missing deltas since cursor
-    S->>S: Also check state vector for gaps
-    S-->>C: Return missing data
-    C->>C: Apply deltas to local doc
-    C->>C: Reconcile any phantoms
+flowchart TD
+    RECONNECT[Client Reconnects]
+    CHECK{Check peer status}
+    
+    RECONNECT --> CHECK
+    
+    CHECK -->|Active peer| INCREMENTAL[Incremental Sync]
+    CHECK -->|Stale peer| FULL[Full Resync]
+    
+    INCREMENTAL --> MERGE[Merge local + server deltas]
+    FULL --> SNAPSHOT[Download full snapshot]
+    
+    MERGE --> RESOLVE[Yjs CRDT resolution]
+    SNAPSHOT --> REPLACE[Replace local state]
+    
+    RESOLVE --> SYNC_BACK[Sync merged result to server]
+    REPLACE --> APPLY_LOCAL[Re-apply pending local changes]
+    
+    SYNC_BACK --> DONE[Synchronized]
+    APPLY_LOCAL --> DONE
 ```
 
-**State vectors** enable efficient sync—only missing data is transferred, not the full document. Combined with cursor-based tracking, we get both efficiency and correctness.
-
-## Auto-Compaction: The Hardest Problem We Solved
-
-Without compaction, event logs grow unbounded. Every keystroke becomes a delta. Over time, a document could have thousands of deltas just to represent a single paragraph.
-
-But compaction is deceptively hard. The core question: **when can you safely delete deltas without orphaning a peer that hasn't synced yet?**
-
-This problem nearly broke us. Let me walk through the evolution.
-
-### The Original Approach (Main Branch): Timestamp-Based, Size-Triggered
-
-Our first implementation used timestamps and size thresholds:
-
-```typescript
-// main:src/component/schema.ts - The original schema
-documents: defineTable({
-  collection: v.string(),
-  documentId: v.string(),
-  crdtBytes: v.bytes(),
-  version: v.number(),
-  timestamp: v.number(),  // Problem: not monotonic!
-})
-  .index("by_timestamp", ["collection", "timestamp"])
-```
-
-When a document's delta chain exceeded 5MB, we'd merge all deltas into a snapshot:
-
-```typescript
-// Simplified auto-compaction logic
-const deltas = await ctx.db
-  .query("documents")
-  .withIndex("by_collection_document_version", ...)
-  .collect();
-
-const totalSize = deltas.reduce((sum, d) => sum + d.crdtBytes.byteLength, 0);
-
-if (totalSize > 5_000_000) {
-  // Merge deltas into snapshot
-  const compactedState = Y.mergeUpdatesV2(deltas.map(d => d.crdtBytes));
-  await ctx.db.insert("snapshots", { snapshotBytes: compactedState, ... });
-  
-  // Delete old deltas
-  for (const delta of deltas) {
-    await ctx.db.delete(delta._id);
-  }
-}
-```
-
-**The fatal flaw**: We had no way to know if a client was still catching up. If Client A was offline for a week and came back, their cursor might point to deltas we'd already deleted.
-
-### The Cursor Problem (Discovered via Convex Team)
-
-The timestamp approach had another subtle bug. Ian from Convex pointed out:
-
-> "Currently the 'check if there are new changes' uses the previous `_creationTime` as the cursor. Unfortunately, the previous query could have fetched results before an in-progress mutation commits..."
-
-In other words: **timestamps are not monotonic in MVCC systems**. Due to Convex's optimistic concurrency control, a mutation that starts earlier might commit later, creating gaps in the timestamp sequence.
-
-### The Solution (Cursor Branch): Peer-Tracking Compaction
-
-The `cursor` branch implements the correct approach with three key changes:
-
-**1. Monotonic Sequence Numbers**
-
-Replace timestamps with explicitly incremented sequence numbers:
-
-```typescript
-// cursor:src/component/schema.ts - The new schema
-documents: defineTable({
-  collection: v.string(),
-  documentId: v.string(),
-  crdtBytes: v.bytes(),
-  seq: v.number(),  // Monotonically increasing within transaction
-})
-  .index("by_seq", ["collection", "seq"])
-```
-
-Each insert reads the current max seq and increments it atomically:
-
-```typescript
-async function getNextSeq(ctx, collection: string): Promise<number> {
-  const latest = await ctx.db
-    .query("documents")
-    .withIndex("by_seq", q => q.eq("collection", collection))
-    .order("desc")
-    .first();
-  return (latest?.seq ?? 0) + 1;
-}
-```
-
-**2. Peer Progress Tracking**
-
-Track where each client has synced to:
-
-```typescript
-// cursor:src/component/schema.ts
-peers: defineTable({
-  collection: v.string(),
-  peerId: v.string(),
-  lastSyncedSeq: v.number(),  // "I've processed up to seq N"
-  lastSeenAt: v.number(),     // For stale peer detection
-})
-  .index("by_collection_peer", ["collection", "peerId"])
-```
-
-Clients call `mark` after processing deltas:
-
-```typescript
-// From cursor:src/component/public.ts
-export const mark = mutation({
-  args: {
-    collection: v.string(),
-    peerId: v.string(),
-    syncedSeq: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("peers")
-      .withIndex("by_collection_peer", ...)
-      .first();
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        lastSyncedSeq: Math.max(existing.lastSyncedSeq, args.syncedSeq),
-        lastSeenAt: Date.now(),
-      });
-    } else {
-      await ctx.db.insert("peers", { ...args, lastSeenAt: Date.now() });
-    }
-  },
-});
-```
-
-**3. Safe Compaction Logic**
-
-Only delete deltas that ALL active peers have acknowledged:
-
-```typescript
-// From cursor:src/component/public.ts
-export const compact = mutation({
-  args: {
-    collection: v.string(),
-    documentId: v.string(),
-    snapshotBytes: v.bytes(),
-    stateVector: v.bytes(),
-    peerTimeout: v.optional(v.number()),
-  },
-  handler: async (ctx, args) => {
-    const peerTimeout = args.peerTimeout ?? 5 * 60 * 1000;
-    const peerCutoff = Date.now() - peerTimeout;
-
-    // Find all active peers (seen within timeout window)
-    const activePeers = await ctx.db
-      .query("peers")
-      .withIndex("by_collection", ...)
-      .filter(q => q.gt(q.field("lastSeenAt"), peerCutoff))
-      .collect();
-
-    // The minimum seq that ALL active peers have synced
-    const minSyncedSeq = activePeers.length > 0
-      ? Math.min(...activePeers.map(p => p.lastSyncedSeq))
-      : Infinity;
-
-    // Store snapshot with stateVector for recovery
-    await ctx.db.insert("snapshots", {
-      ...args,
-      snapshotSeq: currentMaxSeq,
-      createdAt: Date.now(),
-    });
-
-    // ONLY delete deltas that all active peers have confirmed
-    let removed = 0;
-    for (const delta of deltas) {
-      if (delta.seq < minSyncedSeq) {
-        await ctx.db.delete(delta._id);
-        removed++;
-      }
-    }
-
-    return { success: true, removed, retained: deltas.length - removed };
-  },
-});
-```
-
-### Why This Is Hard
-
-The compaction problem forces you to think about distributed systems failure modes:
-
-| Scenario | Old Approach (Timestamp) | New Approach (Peer-Tracking) |
-|----------|-------------------------|------------------------------|
-| Client offline 1 week | **Data loss** - deltas deleted | Safe - peer marked stale after timeout |
-| Concurrent mutations | **Gaps** - MVCC ordering issues | Safe - monotonic seq |
-| Slow client | **Blocked** - can't compact | Safe - stale detection |
-| Server restart | **Unknown state** | Safe - peer positions persisted |
-
-The key insight: **compaction is not a storage problem—it's a distributed consensus problem**. You need to know what every participant has seen before you can safely garbage collect.
+The beauty of CRDTs: when both the local and server have divergent changes, we don't have to pick a winner. Yjs mathematically merges them into a consistent state that preserves both users' intent (to the extent possible).
 
 ---
 
-# What We Learned
+## What We Learned
 
-After hundreds of commits across multiple branches, three architectural pivots, and countless debugging sessions, here's what we took away:
+Building Replicate taught us lessons that extend far beyond sync engines:
 
-## 1. Opinions Over Flexibility
+**1. Opinions > Flexibility**
 
-The RxDB experiment taught us that flexibility isn't always a feature. When you're unopinionated, you force every user to make complex decisions about conflict resolution, storage backends, and sync protocols.
+I started trying to be "unopinionated." Support every database! Every conflict strategy! Every storage backend! That was a mistake.
 
-The better approach: make opinionated choices based on research, then make them work beautifully. Developers don't want to choose their CRDT library. They want their app to work offline and merge conflicts automatically.
+Users don't want flexibility. They want to import a library and have their app work offline. They want us to make the hard decisions about conflict resolution, compaction, and socket management so they don't have to.
 
-## 2. The Replication Table Pattern is Battle-Tested
+Replicate is opinionated. It uses Yjs. It uses SQLite. It uses a specific sync protocol. And that's why it works.
 
-PostgreSQL's logical replication pattern (WAL + LSN offsets) has decades of production use. ElectricSQL showed how to adapt it. We combined it with CRDTs.
+**2. The Replication Table Pattern is Battle-Tested**
 
-The pattern works because it's simple:
-- Append-only event log with sequential identifiers
-- Checkpoint-based incremental sync
-- Separation of event storage and materialized state
+WAL + LSN offsets have powered PostgreSQL replication for decades. Kafka uses the same pattern. So does virtually every event sourcing system. We didn't invent anything new—we adapted proven patterns to the browser.
 
-Don't reinvent this. Adapt it.
+**3. CRDTs Solve the Hard Problem**
 
-## 3. CRDTs Solve the Hard Problem
+When I started, I thought conflict resolution was a UX problem (show the user both versions, let them pick). CRDTs taught me it's a math problem, and math has solutions.
 
-The hard problem in local-first is conflict resolution. CRDTs solve it mathematically—any merge, any order, deterministic result.
+**4. The Transport/Logic Split is Essential**
 
-The implementation details matter (Yjs vs Loro vs Automerge), but the core insight is the same: if you design your data structures to be commutative, associative, and idempotent, conflicts disappear.
+Convex handles transport brilliantly. We handle merge logic. Neither tries to do the other's job. This separation of concerns is why the integration works.
 
-## 4. Convex Handles Transport; We Handle Merging
+**5. Timestamps Are Lies in Distributed Systems**
 
-This division of labor was key. Convex already provides:
-- Real-time WebSocket subscriptions
-- Optimistic updates
-- Automatic reconnection
-- Server-side logic and queries
+This one hurt. Clocks drift. Commits happen out of order. Network partitions create time paradoxes. The only reliable ordering is one you explicitly create (sequence numbers, vector clocks, etc.).
 
-We didn't need to build a sync engine. We needed to build a merge layer on top of an excellent sync engine.
+**6. Platform Constraints Shape Architecture**
 
-## 5. Local-First is Both UX and Implementation Problem
+The WASM tax forced us from Automerge to Yjs. React Native's lack of Node APIs forced us to SQLite. Convex's 64MB memory limit shaped our sync batch sizes. Constraints aren't obstacles—they're design parameters.
 
-From Zero Sync's philosophy: users expect instant, offline-capable, conflict-free software because native apps trained them to expect it. The implementation complexity is a developer problem, but the experience is a user expectation.
+**7. Rich Text is Its Own Beast**
 
-For Trestle's users—field workers entering data in unreliable conditions—local-first isn't a nice-to-have. It's the baseline expectation for software that respects their time and their clients' stories.
+If you're building a collaborative editor, plan for the ProseMirror/Yjs integration from day zero. Bolting it on later is painful.
 
-## 6. Platform Constraints Shape Architecture
+**8. Compaction is a Distributed Consensus Problem**
 
-The browser is not React Native is not Convex runtime. Each has different capabilities and constraints:
+You can't just delete old data. You need to know that every participant has acknowledged that data. This is fundamentally a consensus problem, not a storage problem.
 
-| Platform | Memory | Bundle Size Sensitivity | WASM Support |
-|----------|--------|------------------------|--------------|
-| Browser | Generous | High (affects load time) | Good |
-| React Native | Limited | Medium | Poor |
-| Convex Runtime | 64 MiB | Low | Adds cold start cost |
+### The Road Ahead
 
-We couldn't just pick the theoretically best library. We had to pick the one that worked across all our target platforms without imposing unacceptable costs.
+Replicate is now powering Ledger's offline forms in production. But we're not done:
 
-## 7. Timestamps Are Harder Than They Look
+- **Conflict Visualization**: Show users when merges happened and what was combined
+- **Cross-Document References**: CRDT-aware foreign keys with integrity guarantees
+- **History/Undo**: Time-travel through document history, Google Docs style
+- **E2E Encryption**: Client-side encryption with key sharing for collaboration
 
-The cursor problem taught us that distributed timestamps are deceptively complex. MVCC and OCC are great for performance but create non-obvious ordering issues.
-
-When you need total ordering, you must create it explicitly. Don't rely on system-generated timestamps unless you understand exactly how they're generated and when.
-
-## 8. Rich Text Is Its Own Beast
-
-ProseMirror integration revealed that not all data syncs the same way. Rich text has special requirements:
-- Hierarchical structure (not just key-value)
-- Formatting spans that overlap
-- Editor state that competes with CRDT state
-- High-frequency updates that need debouncing
-
-If you're building a sync library, plan for rich text from the start. Retrofitting it is painful.
+The local-first revolution is here. If you're building without it, you're already behind.
 
 ---
 
-# The Road Ahead
+## A Note on Sponsorship
 
-Replicate is in production at Trestle, powering Ledger's offline-first forms. But there's more to build:
+After shipping v1.0.0, I reached out to the Convex team. What started as "here's this thing I built on your platform" turned into a deeper conversation about the future of local-first on Convex.
 
-**Cursor-based sync** is landing soon—the work on the `cursor` branch represents months of research into correct, efficient sync primitives.
+[@Jamie](https://x.com/jamwt) and the team saw the potential. Replicate aligned with their roadmap. They're now working on **client-side generated Convex IDs**—a feature that will clean up Replicate's API surface significantly (no more `crypto.randomUUID()` everywhere) and make Replicate a first-class citizen of the Convex ecosystem.
 
-**Rich text as a first-class feature** is on the roadmap. The ProseMirror integration works, but there's room for a more integrated experience—possibly revisiting Loro's Fugue algorithm for text specifically.
+The open-source component that started as a nights-and-weekends experiment is now a sponsored project by [@convex](https://x.com/convex).
 
-**Conflict visualization** for debugging—when merges happen, developers should be able to see what was merged and how.
-
-**React Native parity**—the Expo example works, but production apps will surface edge cases.
-
-**Selective sync**—not every document needs to be on every device. Shapes-style filtering is coming.
-
-The local-first revolution isn't coming. It's here. And if you're building collaborative software without offline-first architecture, you're already behind.
-
-Welcome to the new standard.
+> Replicate is now an officially sponsored Convex project 🎉
+> — [@Jamie](https://x.com/jamwt/status/2000986558737076722)
 
 ---
 
-# A Note on Sponsorship
+## Resources & Further Reading
 
-After shipping 1.0.0, I met with Jamie Turner (Convex's CEO). The vision for Replicate aligned with what Convex wanted for their ecosystem—that "Convex-flavored take on local-first" they'd mentioned in the Series B announcement.
+### Foundational
+- [Local-First Software (Ink & Switch)](https://www.inkandswitch.com/local-first/) — The essay that started it all
+- [CRDTs: The Hard Parts (Martin Kleppmann)](https://www.youtube.com/watch?v=x7drE24geUw) — Deep dive into CRDT theory
 
-Replicate became a sponsored project. Which is pretty cool.
+### Libraries & Tools
+- [Yjs Documentation](https://docs.yjs.dev/) — The CRDT library we use
+- [Convex Components](https://docs.convex.dev/components) — How to build Convex components
+- [crdt-benchmarks](https://github.com/dmonad/crdt-benchmarks) — Performance comparisons
 
-It means continued development, feedback from the Convex team, and a commitment to making this work at scale. The open-source local-first component that started as a nights-and-weekends experiment is now part of Convex's story.
+### ElectricSQL's Journey
+- [Introducing Rich-CRDTs](https://electric-sql.com/blog/2022/05/03/introducing-rich-crdts) — The original vision
+- [Electric Next Announcement](https://electric-sql.com/blog/2024/07/17/electric-next) — The pivot
+- [Vaxine Repository](https://github.com/electric-sql/vaxine) — The Rich-CRDT implementation
+
+### Convex Blog Posts
+- [An Object Sync Engine for Local-first Apps](https://stack.convex.dev/object-sync-engine) — Sujay's vision
+- [Going local-first with Automerge and Convex](https://stack.convex.dev/automerge-and-convex) — Ian's implementation guide
+
+### Alternative Approaches
+- [PowerSync: Sync Postgres](https://www.powersync.com/sync-postgres) — Their architecture
+- [Zero: When to Use](https://zero.rocicorp.dev/docs/when-to-use) — Rocicorp's approach
+- [Convex Raises $24M](https://news.convex.dev/convex-raises-24m/) — The announcement that fueled my competitive fire
+
+### Academic
+- [Fugue Paper (arXiv:2305.00583)](https://arxiv.org/abs/2305.00583) — Minimizing interleaving in collaborative text
+- [Architectures for Central Server Collaboration](https://mattweidner.com/2024/06/04/server-architectures.html) — Matthew Weidner's taxonomy
 
 ---
 
-# Resources & Further Reading
-
-| Resource | Description |
-|----------|-------------|
-| [Local-First Software (Ink & Switch)](https://www.inkandswitch.com/local-first/) | The foundational essay that coined "local-first" |
-| [Zero by Rocicorp](https://zero.rocicorp.dev/) | Sync engine for the web with elegant architecture |
-| [Yjs Documentation](https://docs.yjs.dev/) | The CRDT library powering Replicate |
-| [Loro](https://loro.dev/) | Next-gen CRDT with Fugue and movable trees |
-| [Fugue Paper (arXiv:2305.00583)](https://arxiv.org/abs/2305.00583) | "The Art of the Fugue: Minimizing Interleaving" |
-| [Peritext (Ink & Switch)](https://www.inkandswitch.com/peritext/) | Rich text CRDT research |
-| [Convex Components](https://docs.convex.dev/components) | Building reusable Convex modules |
-| [Convex Limits](https://docs.convex.dev/production/state/limits) | Runtime constraints |
-| [prosemirror-sync](https://github.com/get-convex/prosemirror-sync) | Convex's collaborative editing component |
-| [ElectricSQL Rich-CRDTs](https://electric-sql.com/blog/2022/05/03/introducing-rich-crdts) | The legacy architecture documentation |
-| [AntidoteDB](https://github.com/AntidoteDB/antidote) | Planet-scale CRDT database (829 stars) |
-| [crdt-benchmarks](https://github.com/dmonad/crdt-benchmarks) | Standard CRDT benchmark suite |
-
----
-
-*Replicate is open-source and available under Apache-2.0 license. Built with Yjs, TanStack DB, and Convex.*
-
-*Built at [Trestle](https://trestle.com)—software that amplifies human compassion.*
+*Replicate is now a sponsored project by Convex. Built at [Trestle](https://trestle.inc)—software that amplifies human compassion.*
