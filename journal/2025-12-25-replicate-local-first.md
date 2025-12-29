@@ -431,14 +431,14 @@ Here's the thing: when I read that announcement, I already had a working API for
 
 Sometimes the right answer is the boring one.
 
-With the Convex raise fresh in my mind and the WASM tax burning a hole in our wallet, I did what I should have done from the start: I looked at what actually works in production. While companies like Notion and Figma use custom CRDT implementations (Figma's LiveGraph, for example), many successful collaborative tools like Linear and Evernote rely on Yjs. So we ripped out Automerge and dropped in Yjs.
+With the Convex raise fresh in my mind and the WASM tax burning a hole in our wallet, I did what I should have done from the start: I looked at what actually works in production. While companies like Notion and Figma use custom CRDT implementations (Figma's LiveGraph, for example), many successful collaborative tools like Linear, Evernote, and Proton rely on Yjs. So we ripped out Automerge and dropped in Yjs.
 
 The migration took two days. Two days! After weeks of fighting Automerge's WASM overhead, two days felt like a miracle. The results were immediate.
 
 - **Pure JavaScript**: No WASM overhead, no boundary-crossing serialization costs.
 - **Tiny Bundle**: ~30KB minified vs Automerge's larger footprint.
 - **State Vectors**: A genius sync protocol that minimizes data transfer.
-- **Battle-tested**: Powers Linear, Evernote, and countless collaborative editors.
+- **Battle-tested**: Powers Linear, Evernote, Proton, and countless collaborative editors.
 
 ### Bundle Size Comparison
 
