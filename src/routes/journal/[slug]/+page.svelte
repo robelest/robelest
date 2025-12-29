@@ -162,7 +162,7 @@
 		{/if}
 	</div>
 
-	<main class="w-full max-w-3xl lg:max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12 lg:py-20">
+	<main class="w-full max-w-3xl lg:max-w-[1008px] mx-auto px-4 sm:px-6 py-8 sm:py-12 lg:py-20">
 		{#if entryQuery.isLoading}
 			<div class="flex items-center gap-3 text-th-muted" role="status" aria-label="Loading article">
 				<div class="w-4 h-4 border-2 border-th-muted border-t-transparent rounded-full animate-spin" aria-hidden="true"></div>
@@ -261,14 +261,16 @@
 	</main>
 
 	<!-- Footer -->
-	<footer class="w-full max-w-3xl lg:max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8 border-t border-th-border" aria-label="Site information">
-		<nav class="flex items-center justify-between" aria-label="Footer navigation">
-			<a href="/" class="text-xs text-th-muted hover:text-th-accent transition-colors uppercase tracking-wider">
-				← Back to home
-			</a>
-			<p class="text-xs text-th-muted uppercase tracking-wider">
-				Manhattan, NY
-			</p>
+	<footer class="w-full max-w-3xl lg:max-w-[1008px] mx-auto px-4 sm:px-6 py-6 sm:py-8 border-t border-th-border" aria-label="Site information">
+		<nav class="flex items-center gap-8" aria-label="Footer navigation">
+			<div class="flex-1 lg:max-w-[calc(100%-192px)] flex items-center justify-between">
+				<a href="/" class="text-xs text-th-muted hover:text-th-accent transition-colors uppercase tracking-wider">
+					← Back to home
+				</a>
+				<p class="text-xs text-th-muted uppercase tracking-wider">
+					Manhattan, NY
+				</p>
+			</div>
 		</nav>
 	</footer>
 </div>
