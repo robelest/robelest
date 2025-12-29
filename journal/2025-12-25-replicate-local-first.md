@@ -431,7 +431,7 @@ Here's the thing: when I read that announcement, I already had a working API for
 
 Sometimes the right answer is the boring one.
 
-With the Convex raise fresh in my mind and the WASM tax burning a hole in our wallet, I did what I should have done from the start: I looked at what Notion and Figma actually use in production. They use Yjs. So we ripped out Automerge and dropped in Yjs.
+With the Convex raise fresh in my mind and the WASM tax burning a hole in our wallet, I did what I should have done from the start: I looked at what actually works in production. While companies like Notion and Figma use custom CRDT implementations (Figma's LiveGraph, for example), many successful collaborative tools like Liveblocks and various open-source editors rely on Yjs. So we ripped out Automerge and dropped in Yjs.
 
 The migration took two days. Two days! After weeks of fighting Automerge's WASM overhead, two days felt like a miracle. The results were immediate.
 
