@@ -3,14 +3,11 @@ title: Convex + WorkOS AuthKit + TanStack Start Integration
 slug: convex-workos-tanstack-start
 description: Complete guide for integrating WorkOS AuthKit authentication with Convex backend and TanStack Start framework
 tags:
-  - authentication
   - convex
-  - workos
-  - tanstack-start
-  - react
+  - integrations
+  - authentication
 publishDate: 2025-12-18
 published: true
-category: technical
 ---
 
 # Introduction

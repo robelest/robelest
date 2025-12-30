@@ -3,14 +3,10 @@ title: PWA Offline Support with TanStack Start
 slug: pwa-tanstack-start
 description: Complete guide for implementing offline-capable PWA with custom service worker in TanStack Start SSR applications
 tags:
-  - pwa
-  - tanstack-start
-  - service-worker
-  - workbox
-  - offline-first
+  - integrations
+  - local-first
 publishDate: 2025-12-19
 published: true
-category: technical
 ---
 
 # Introduction

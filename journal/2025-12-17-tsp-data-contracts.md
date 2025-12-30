@@ -3,15 +3,11 @@ title: "Data Contracts at Scale: The Publish-Subscribe-Map Pattern"
 slug: tsp-data-contracts
 description: A Convex component for versioned data contracts enabling inter-organization data exchange through publish-subscribe-map with semantic versioning.
 tags:
-  - tsp
-  - data-contracts
-  - versioning
-  - integration
   - convex
-  - convex-component
+  - components
+  - integrations
 publishDate: 2025-12-17
 published: true
-category: technical
 ---
 
 # Abstract

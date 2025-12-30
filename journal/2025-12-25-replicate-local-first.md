@@ -3,17 +3,11 @@ title: "Building Replicate"
 slug: replicate-local-first
 description: The full, unvarnished story of building an offline-first sync engine for Convex—from RxDB experiments to Yjs CRDTs, the Loro exploration, and the cursor problem that nearly broke everything.
 tags:
-  - replicate
-  - offline-first
-  - crdt
-  - sync
   - convex
-  - convex-component
-  - engineering
+  - components
   - local-first
 publishDate: 2025-12-25
 published: true
-category: technical
 ---
 
 # An Engineering Post-Mortem

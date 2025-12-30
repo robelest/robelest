@@ -3,15 +3,11 @@ title: "Zero-Knowledge Browser Automation: Secure Blueprint Execution"
 slug: crane-browser-automation
 description: A Convex component for browser automation with declarative blueprints, zero-knowledge credential vault, and AI-powered element detection.
 tags:
-  - crane
-  - automation
-  - browser
-  - credentials
   - convex
-  - convex-component
+  - components
+  - automation
 publishDate: 2025-12-17
 published: true
-category: technical
 ---
 
 # Abstract

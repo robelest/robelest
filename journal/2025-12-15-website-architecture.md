@@ -4,12 +4,9 @@ slug: website-architecture
 description: Technical architecture overview of the robelest portfolio website
 tags:
   - architecture
-  - sveltekit
   - convex
-  - typst
 publishDate: 2025-12-15
 published: true
-category: technical
 ---
 
 # Introduction

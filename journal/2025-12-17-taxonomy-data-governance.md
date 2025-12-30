@@ -3,15 +3,11 @@ title: "Built-In Data Governance: A GDPR/CCPA Compliance Framework"
 slug: taxonomy-data-governance
 description: A Convex component for privacy compliance with DSR workflows, consent management, retention policies, and audit logging.
 tags:
-  - taxonomy
-  - compliance
-  - gdpr
-  - ccpa
   - convex
-  - convex-component
+  - components
+  - architecture
 publishDate: 2025-12-17
 published: true
-category: technical
 ---
 
 # Abstract

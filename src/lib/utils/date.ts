@@ -10,3 +10,15 @@ export function formatDate(dateString: string): string {
 	const year = date.getFullYear();
 	return `${month}-${day}-${year}`;
 }
+
+/**
+ * Format a date string to a short format for compact lists
+ * @param dateString - ISO date string
+ * @returns Formatted date string (e.g., "Mar 24")
+ */
+export function formatShortDate(dateString: string): string {
+	const date = new Date(dateString);
+	const month = date.toLocaleString('en-US', { month: 'short' });
+	const year = String(date.getFullYear()).slice(-2);
+	return `${month} '${year}`;
+}

@@ -3,15 +3,11 @@ title: "Reactive Data Pipelines: From Schema to Automated Actions"
 slug: bridge-reactive-data
 description: A Convex component for reactive data pipelines connecting schema definitions to automated actions through cards, procedures, and deliverables.
 tags:
-  - bridge
-  - reactive
-  - automation
-  - schema
   - convex
-  - convex-component
+  - components
+  - automation
 publishDate: 2025-12-17
 published: true
-category: technical
 ---
 
 # Abstract

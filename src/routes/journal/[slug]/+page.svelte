@@ -162,7 +162,7 @@
 		{/if}
 	</div>
 
-	<main class="w-full max-w-3xl lg:max-w-[1008px] mx-auto px-4 sm:px-6 py-8 sm:py-12 lg:py-20">
+	<main class="w-full max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-12 lg:py-16">
 		{#if entryQuery.isLoading}
 			<div class="flex items-center gap-3 text-th-muted" role="status" aria-label="Loading article">
 				<div class="w-4 h-4 border-2 border-th-muted border-t-transparent rounded-full animate-spin" aria-hidden="true"></div>
@@ -175,6 +175,20 @@
 					{entryQuery.data.title}
 				</h1>
 
+				<!-- Tags as clickable links -->
+				{#if entryQuery.data.tags && entryQuery.data.tags.length > 0}
+					<div class="flex flex-wrap items-center gap-2 mb-3">
+						{#each entryQuery.data.tags as tag}
+							<a
+								href="/journal?tags={encodeURIComponent(tag)}"
+								class="tag-link"
+							>
+								{tag}
+							</a>
+						{/each}
+					</div>
+				{/if}
+
 				<div class="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-th-muted">
 					<time datetime={entryQuery.data.publishDate} class="uppercase tracking-wide">
 						{formatDate(entryQuery.data.publishDate)}
@@ -183,11 +197,6 @@
 					{#if entryQuery.data.fileSize}
 						<span class="text-th-border" aria-hidden="true">·</span>
 						<span>{formatFileSize(entryQuery.data.fileSize)}</span>
-					{/if}
-
-					{#if entryQuery.data.category}
-						<span class="text-th-border" aria-hidden="true">·</span>
-						<span class="uppercase tracking-wide">{entryQuery.data.category}</span>
 					{/if}
 
 					<span class="text-th-border" aria-hidden="true">·</span>
@@ -209,49 +218,35 @@
 				{/if}
 			</header>
 
-			<!-- Two-column layout -->
-			<div class="grid grid-cols-1 lg:grid-cols-[1fr_160px] gap-8 items-start">
-				<!-- Main content -->
-				<article class="typst-content min-w-0" bind:this={contentEl}>
-					{@html renderedContent}
-				</article>
+			<!-- Article content -->
+			<article class="typst-content" bind:this={contentEl}>
+				{@html renderedContent}
+			</article>
 
-				<!-- Sidebar TOC -->
-				{#if tocItems.length > 0}
-					<aside bind:this={sidebarEl} class="hidden lg:block sticky top-8 max-h-[calc(100vh-4rem)] overflow-y-auto" aria-label="Article sidebar">
-						<nav class="pl-3 border-l border-th-border text-[0.6875rem] leading-relaxed font-sans" aria-label="Table of contents">
-							<span class="block text-[0.5625rem] font-semibold uppercase tracking-widest text-th-muted mb-3">Contents</span>
-							{#each tocItems as item}
-								<button
-									type="button"
-									data-toc-id={item.id}
-									onclick={() => scrollToHeading(item.id)}
-									class="toc-item"
-									class:toc-h1={item.level === 1}
-									class:toc-h2={item.level === 2}
-									class:toc-h3={item.level === 3}
-									class:active={activeId === item.id}
-									aria-current={activeId === item.id ? 'true' : undefined}
-								>
-									{item.text}
-								</button>
-							{/each}
-						</nav>
-					</aside>
-				{/if}
-			</div>
-
-			<!-- Tags at bottom -->
-			{#if entryQuery.data.tags && entryQuery.data.tags.length > 0}
-				<div class="mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-th-border max-w-2xl">
-					<span class="text-xs uppercase tracking-wider text-th-muted mr-2 sm:mr-3">Tagged</span>
-					{#each entryQuery.data.tags as tag}
-						<span class="inline-block text-xs px-2 py-0.5 bg-th-surface text-th-muted rounded mr-1.5 sm:mr-2 mb-2">
-							{tag}
-						</span>
-					{/each}
-				</div>
+			<!-- TOC floats outside content width on large screens -->
+			{#if tocItems.length > 0}
+				<aside bind:this={sidebarEl} class="hidden lg:block fixed top-24 left-[calc(50%+25rem)] w-40 max-h-[calc(100vh-8rem)] overflow-y-auto" aria-label="Article sidebar">
+					<nav class="pl-3 border-l border-th-border text-[0.6875rem] leading-relaxed font-sans" aria-label="Table of contents">
+						<span class="block text-[0.5625rem] font-semibold uppercase tracking-widest text-th-muted mb-3">Contents</span>
+						{#each tocItems as item}
+							<button
+								type="button"
+								data-toc-id={item.id}
+								onclick={() => scrollToHeading(item.id)}
+								class="toc-item"
+								class:toc-h1={item.level === 1}
+								class:toc-h2={item.level === 2}
+								class:toc-h3={item.level === 3}
+								class:active={activeId === item.id}
+								aria-current={activeId === item.id ? 'true' : undefined}
+							>
+								{item.text}
+							</button>
+						{/each}
+					</nav>
+				</aside>
 			{/if}
+
 		{:else}
 			<div class="text-center py-12">
 				<p class="text-th-muted mb-4 text-sm">Entry not found.</p>
@@ -261,21 +256,30 @@
 	</main>
 
 	<!-- Footer -->
-	<footer class="w-full max-w-3xl lg:max-w-[1008px] mx-auto px-4 sm:px-6 py-6 sm:py-8 border-t border-th-border" aria-label="Site information">
-		<nav class="flex items-center gap-8" aria-label="Footer navigation">
-			<div class="flex-1 lg:max-w-[calc(100%-192px)] flex items-center justify-between">
-				<a href="/" class="text-xs text-th-muted hover:text-th-accent transition-colors uppercase tracking-wider">
-					← Back to home
-				</a>
-				<p class="text-xs text-th-muted uppercase tracking-wider">
-					Manhattan, NY
-				</p>
-			</div>
-		</nav>
+	<footer class="w-full max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6 border-t border-th-border" aria-label="Site information">
+		<p class="text-xs sm:text-sm text-th-muted">Manhattan, NY</p>
 	</footer>
 </div>
 
 <style>
+	.tag-link {
+		padding: 0.125rem 0.5rem;
+		font-size: 0.625rem;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-th-muted);
+		border: 1px solid var(--color-th-border);
+		border-radius: 2px;
+		background: transparent;
+		transition: all 0.15s ease;
+		text-decoration: none;
+	}
+
+	.tag-link:hover {
+		border-color: var(--color-th-accent);
+		color: var(--color-th-accent);
+	}
+
 	.toc-item {
 		display: block;
 		width: 100%;

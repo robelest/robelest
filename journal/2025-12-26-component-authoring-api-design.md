@@ -3,14 +3,10 @@ title: "Component Authoring: The API Design Journey"
 slug: component-authoring-api-design
 description: How we evolved the API design and build system for Trestle's Convex components—from reverse-engineering undocumented patterns to shipping before the official docs existed.
 tags:
-  - typescript
-  - api-design
-  - convex-component
-  - tsdown
-  - library-authoring
+  - components
+  - architecture
 publishDate: 2025-12-26
 published: true
-category: technical
 ---
 
 # Component Authoring: The API Design Journey
