@@ -5,7 +5,7 @@
 	import { SvelteSet } from 'svelte/reactivity';
 	import { useQuery } from 'convex-svelte';
 	import { api } from '../../../convex/_generated/api';
-	import { formatDate, formatShortDate } from '$lib/utils/date';
+	import { formatDate } from '$lib/utils/date';
 
 	let { data }: { data: PageData } = $props();
 
@@ -183,9 +183,9 @@
 										<div class="flex items-baseline gap-4 min-w-0">
 											<time
 												datetime={entry.publishDate}
-												class="text-xs text-th-muted tabular-nums shrink-0 w-14"
+												class="text-xs text-th-muted tabular-nums shrink-0 whitespace-nowrap"
 											>
-												{formatShortDate(entry.publishDate)}
+												{formatDate(entry.publishDate)}
 											</time>
 											<h3 class="text-sm text-th-text group-hover:text-th-accent transition-colors truncate" style="font-family: var(--font-display);">
 												{entry.title}
