@@ -1,17 +1,25 @@
 #!/usr/bin/env bun
 
-import { readdir, readFile, writeFile, stat, mkdir, unlink } from "fs/promises";
+import { readdir, readFile, writeFile, stat, mkdir, unlink, access } from "fs/promises";
 import { join, basename } from "path";
-import { execSync } from "child_process";
+import { execSync, exec } from "child_process";
 import { createHash } from "crypto";
+import { promisify } from "util";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import matter from "gray-matter";
+import pLimit from "p-limit";
+
+const execAsync = promisify(exec);
 
 const CONTENT_DIR = join(process.cwd(), "journal");
 const BUILD_DIR = join(process.cwd(), ".build");
 const TEMPLATES_DIR = join(CONTENT_DIR, "templates");
+const DIAGRAMS_DIR = join(BUILD_DIR, "diagrams");
+
+const DIAGRAM_LIMIT = pLimit(4);
+const FILE_LIMIT = pLimit(6);
 
 interface Frontmatter {
 	title: string;
@@ -35,11 +43,26 @@ interface ProtectedContent {
 	placeholders: Map<string, string>;
 }
 
+interface MermaidBlock {
+	content: string;
+	hash: string;
+	svgPath: string;
+}
+
 async function ensureDir(dir: string) {
 	try {
 		await mkdir(dir, { recursive: true });
 	} catch {
 		// Directory exists
+	}
+}
+
+async function fileExists(path: string): Promise<boolean> {
+	try {
+		await access(path);
+		return true;
+	} catch {
+		return false;
 	}
 }
 
@@ -52,7 +75,84 @@ function deriveDateFromFilename(filename: string): string {
 	return match ? match[1] : new Date().toISOString().split("T")[0];
 }
 
-function markdownToTypst(markdown: string, frontmatter: Frontmatter): string {
+function hashContent(content: string): string {
+	return createHash("md5").update(content).digest("hex").slice(0, 12);
+}
+
+function extractMermaidBlocks(markdown: string): { 
+	processedMarkdown: string; 
+	blocks: MermaidBlock[] 
+} {
+	const blocks: MermaidBlock[] = [];
+	
+	const processedMarkdown = markdown.replace(
+		/```mermaid\n([\s\S]*?)```/g,
+		(_, diagram) => {
+			const content = diagram.trim();
+			const hash = hashContent(content);
+			const pngPath = join(DIAGRAMS_DIR, `${hash}.png`);
+			
+			blocks.push({ content, hash, svgPath: pngPath });
+			
+			return `MERMAID_${hash}_ENDMERMAID`;
+		}
+	);
+	
+	return { processedMarkdown, blocks };
+}
+
+async function renderMermaidDiagram(block: MermaidBlock): Promise<void> {
+	if (await fileExists(block.svgPath)) {
+		return;
+	}
+	
+	const mmdPath = join(DIAGRAMS_DIR, `${block.hash}.mmd`);
+	await writeFile(mmdPath, block.content);
+	
+	try {
+		await execAsync(
+			`bunx mmdc -i "${mmdPath}" -o "${block.svgPath}" -b white -s 2`,
+			{ timeout: 30000 }
+		);
+	} finally {
+		await unlink(mmdPath).catch(() => {});
+	}
+}
+
+/**
+ * Render all mermaid diagrams in parallel with concurrency limit
+ */
+async function renderAllDiagrams(blocks: MermaidBlock[]): Promise<Map<string, boolean>> {
+	const results = new Map<string, boolean>();
+	
+	if (blocks.length === 0) return results;
+	
+	const uniqueBlocks = new Map<string, MermaidBlock>();
+	for (const block of blocks) {
+		uniqueBlocks.set(block.hash, block);
+	}
+	
+	const tasks = [...uniqueBlocks.values()].map((block) =>
+		DIAGRAM_LIMIT(async () => {
+			try {
+				await renderMermaidDiagram(block);
+				results.set(block.hash, true);
+			} catch (error) {
+				console.error(`  ⚠ Failed to render diagram ${block.hash}:`, error);
+				results.set(block.hash, false);
+			}
+		})
+	);
+	
+	await Promise.all(tasks);
+	return results;
+}
+
+function markdownToTypst(
+	markdown: string, 
+	frontmatter: Frontmatter,
+	diagramResults: Map<string, boolean>
+): string {
 	let typst = `#import "templates/whitepaper.typ": whitepaper
 
 #show: whitepaper.with(
@@ -62,7 +162,7 @@ function markdownToTypst(markdown: string, frontmatter: Frontmatter): string {
 )
 
 `;
-	typst += convertMarkdownBodyToTypst(markdown);
+	typst += convertMarkdownBodyToTypst(markdown, diagramResults);
 	return typst;
 }
 
@@ -84,7 +184,7 @@ function protectCodeAndSpecialSyntax(markdown: string): ProtectedContent {
 	let text = markdown;
 
 	const protect = (match: string): string => {
-		const key = `__PROTECTED_${counter++}__`;
+		const key = `PROTECTED${counter++}ENDPROTECTED`;
 		placeholders.set(key, match);
 		return key;
 	};
@@ -126,7 +226,10 @@ function restorePlaceholders(
 	return result;
 }
 
-function convertMarkdownBodyToTypst(markdown: string): string {
+function convertMarkdownBodyToTypst(
+	markdown: string,
+	diagramResults: Map<string, boolean>
+): string {
 	// PHASE 1: Protect code, inline code, emphasis pairs, and math pairs
 	const { text: protectedText, placeholders } =
 		protectCodeAndSpecialSyntax(markdown);
@@ -137,7 +240,15 @@ function convertMarkdownBodyToTypst(markdown: string): string {
 	// PHASE 3: Restore protected content
 	result = restorePlaceholders(result, placeholders);
 
-	// PHASE 4: Convert markdown to Typst
+	// PHASE 4: Replace mermaid placeholders with #image() or fallback
+	result = result.replace(/MERMAID_([a-f0-9]+)_ENDMERMAID/g, (_, hash) => {
+		if (diagramResults.get(hash)) {
+			return `#figure(\n  image("../.build/diagrams/${hash}.png", width: 80%),\n  kind: "diagram",\n  supplement: none,\n)`;
+		}
+		return `#rect(width: 100%, height: 3cm, stroke: gray)[_Diagram could not be rendered_]`;
+	});
+
+	// PHASE 5: Convert markdown to Typst
 
 	// Headers
 	result = result.replace(/^### (.+)$/gm, "=== $1");
@@ -341,6 +452,19 @@ function convertMarkdownTables(markdown: string): string {
 	});
 }
 
+interface FileToProcess {
+	file: string;
+	filePath: string;
+	rawContent: string;
+	frontmatter: Frontmatter;
+	slug: string;
+	publishDate: string;
+	contentHash: string;
+	markdown: string;
+	mermaidBlocks: MermaidBlock[];
+	processedMarkdown: string;
+}
+
 async function main() {
 	const convexUrl = process.env.PUBLIC_CONVEX_URL;
 	if (!convexUrl) {
@@ -357,6 +481,7 @@ async function main() {
 	const typstDir = join(BUILD_DIR, "typst");
 	await ensureDir(pdfDir);
 	await ensureDir(typstDir);
+	await ensureDir(DIAGRAMS_DIR);
 
 	let files: string[];
 	try {
@@ -381,7 +506,10 @@ async function main() {
 		return;
 	}
 
-	const localSlugs = new Set<string>();
+	// PHASE 1: Read all files and extract mermaid blocks
+	console.log(`📄 Reading ${files.length} files...`);
+	const filesToProcess: FileToProcess[] = [];
+	const allMermaidBlocks: MermaidBlock[] = [];
 
 	for (const file of files) {
 		const filePath = join(CONTENT_DIR, file);
@@ -398,7 +526,6 @@ async function main() {
 		}
 
 		const slug = frontmatter.slug || deriveSlug(file);
-		localSlugs.add(slug);
 
 		let publishDate: string;
 		if (frontmatter.publishDate instanceof Date) {
@@ -408,16 +535,53 @@ async function main() {
 		} else {
 			publishDate = deriveDateFromFilename(basename(file));
 		}
+
 		const contentHash = createHash("md5").update(rawContent).digest("hex");
 
+		// Extract mermaid blocks
+		const { processedMarkdown, blocks } = extractMermaidBlocks(markdown);
+		allMermaidBlocks.push(...blocks);
+
+		filesToProcess.push({
+			file,
+			filePath,
+			rawContent,
+			frontmatter,
+			slug,
+			publishDate,
+			contentHash,
+			markdown,
+			mermaidBlocks: blocks,
+			processedMarkdown,
+		});
+	}
+
+	// PHASE 2: Render all mermaid diagrams in parallel
+	if (allMermaidBlocks.length > 0) {
+		const uniqueCount = new Set(allMermaidBlocks.map(b => b.hash)).size;
+		console.log(`🎨 Rendering ${uniqueCount} unique diagrams...`);
+	}
+	const diagramResults = await renderAllDiagrams(allMermaidBlocks);
+	const successCount = [...diagramResults.values()].filter(Boolean).length;
+	if (allMermaidBlocks.length > 0) {
+		console.log(`   ✓ ${successCount}/${diagramResults.size} diagrams ready\n`);
+	}
+
+	// PHASE 3: Process files in parallel (compile Typst, upload to Convex)
+	const localSlugs = new Set<string>();
+
+	const processFile = async (fileData: FileToProcess): Promise<SyncResult> => {
+		const { slug, frontmatter, publishDate, contentHash, processedMarkdown, markdown } = fileData;
+		localSlugs.add(slug);
+
 		try {
-			const typstContent = markdownToTypst(markdown, frontmatter);
+			const typstContent = markdownToTypst(processedMarkdown, frontmatter, diagramResults);
 			const typstPath = join(CONTENT_DIR, `.tmp-${slug}.typ`);
 			await writeFile(typstPath, typstContent);
 
 			const pdfPath = join(pdfDir, `${slug}.pdf`);
 			execSync(
-				`typst compile --root "${CONTENT_DIR}" "${typstPath}" "${pdfPath}"`,
+				`typst compile --root "${process.cwd()}" "${typstPath}" "${pdfPath}"`,
 				{ stdio: "pipe" }
 			);
 
@@ -457,21 +621,29 @@ async function main() {
 				contentHash,
 			});
 
-			results.push({ slug, action: result.action });
+			await unlink(typstPath).catch(() => {});
+
 			const icon = result.action === "created" ? "✓" : "↻";
 			console.log(`${icon} ${slug}: ${result.action}`);
 
-			await unlink(typstPath).catch(() => {});
+			return { slug, action: result.action };
 		} catch (error) {
-			results.push({
+			console.error(`✗ ${slug}: ${error}`);
+			return {
 				slug,
 				action: "error",
 				error: error instanceof Error ? error.message : String(error),
-			});
-			console.error(`✗ ${slug}: ${error}`);
+			};
 		}
-	}
+	};
 
+	// Process all files with concurrency limit
+	const fileResults = await Promise.all(
+		filesToProcess.map((fileData) => FILE_LIMIT(() => processFile(fileData)))
+	);
+	results.push(...fileResults);
+
+	// PHASE 4: Clean up deleted entries
 	try {
 		const remoteSlugs = await client.query(api.journal.listSlugs, {});
 		for (const remoteSlug of remoteSlugs) {

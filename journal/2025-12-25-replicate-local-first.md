@@ -158,10 +158,9 @@ However, we hit a snag with Electric’s new HTTP-based streaming. For a whitebo
 Off the tail end of my ElectricSQL research, I was determined to marry Convex’s speed with TanStack’s DX. I built a prototype integrating TanStack’s reactive collections with Convex’s subscriptions.
 
 ```mermaid
-flowchart TD
+flowchart LR
     UI[React UI] <--> TS[TanStack DB]
-    TS <-->|WebSocket Subscription| CONVEX[(Convex)]
-
+    TS <--> CONVEX[(Convex)]
 ```
 
 In the office, on 5G WiFi, it was magic. It was fast, reactive, and felt like the future. Then, I took my laptop to a coffee shop (this part didn't happen either, but for visualization its useful).
@@ -188,12 +187,12 @@ Production-ready, established companies using it at scale, PostgreSQL logical re
 Their architecture is clean on paper:
 
 ```mermaid
-flowchart TD
-    PG[(PostgreSQL)] -->|WAL| PS[PowerSync Service]
-    PS -->|Sync Rules| BUCKET[Buckets]
-    BUCKET -->|WebSocket/HTTP| CLIENT[Client SQLite]
-    CLIENT -->|Writes| API[Backend API]
-    API -->|Mutations| PG
+flowchart LR
+    PG[(PostgreSQL)] --> PS[PowerSync Service]
+    PS --> BUCKET[Buckets]
+    BUCKET -->CLIENT[Client SQLite]
+    CLIENT -->API[Backend API]
+    API --> PG
 ```
 
 The core idea: tail the Postgres Write-Ahead Log, filter changes through "Sync Rules" into "Buckets" (subsets of data relevant to each client), and stream those buckets to client-side SQLite databases.
@@ -238,11 +237,11 @@ Spoiler: I was still wrong about a lot of things.
 For my first serious attempt at a solution, I turned to **RxDB**. On paper, it was the perfect candidate: it acted as a TanStack collection provider, offered built-in CRDT support, and boasted multiple storage adapters. The plan was simple: RxDB would handle local persistence and conflict resolution, while Convex would serve as the high-speed transport layer.
 
 ```mermaid
-flowchart TD
+flowchart LR
     UI[React UI] <--> TS[TanStack DB]
     TS <--> RX[RxDB]
-    RX <-->|IndexedDB| IDB[(Local Storage)]
-    RX <-.->|Replication Protocol| CONVEX[(Convex)]
+    RX <--> IDB[(Local Storage)]
+    RX <-.-> CONVEX[(Convex)]
 
 ```
 
@@ -311,9 +310,9 @@ This was the breakthrough insight: **Stop treating the CRDT as the database. Tre
 ```mermaid
 flowchart TD
     UI[React UI] <--> AM[Automerge Doc]
-    AM <-->|Persist| IDB[(IndexedDB)]
-    AM <-->|Sync Adapter| CONVEX[(Convex)]
-    CONVEX -->|Subscription| UI
+    AM <-->IDB[(IndexedDB)]
+    AM <--> CONVEX[(Convex)]
+    CONVEX -->UI
 ```
 
 The roles became clear:
@@ -337,11 +336,11 @@ flowchart TB
     subgraph "Client"
         UI[React UI] <--> TSQ[TanStack Query]
         TSQ <--> AM[Automerge Doc]
-        AM <-->|Persist| SQLITE[(SQLite/IndexedDB)]
+        AM <-->SQLITE[(SQLite/IndexedDB)]
     end
     
     subgraph "Convex Backend"
-        AM <-->|Sync| COMP[Replicate Component]
+        AM <--> COMP[Replicate Component]
         COMP --> LOG[(Event Log)]
         COMP --> MAT[(Materialized View)]
     end
@@ -470,10 +469,10 @@ This is more efficient than timestamp-based sync because:
 ```mermaid
 flowchart TB
     subgraph "Client Device"
-        UI[React UI] <-->|Read| TSQ[TanStack Query Cache]
-        UI <-->|Write| YJS[Yjs CRDT Doc]
-        YJS <-->|Persist| SQLITE[(Local SQLite)]
-        YJS -->|Sync Delta| SERVER
+        UI[React UI] <-->TSQ[TanStack Query Cache]
+        UI <-->YJS[Yjs CRDT Doc]
+        YJS <-->SQLITE[(Local SQLite)]
+        YJS -->SERVER
     end
 
     subgraph "Convex Server"
@@ -482,8 +481,8 @@ flowchart TB
         LOG[(Event Log<br/>Append Only)]
         MAT[(Materialized View)]
         
-        SERVER -->|1. Append Delta| LOG
-        SERVER -->|2. Update View| MAT
+        SERVER --> LOG
+        SERVER --> MAT
     end
 ```
 
@@ -1127,9 +1126,9 @@ flowchart TB
         YJS[Yjs CRDT Document]
         SQLITE[(SQLite via OPFS/op-sqlite)]
         
-        UI <-->|"Read (reactive)"| TSQ
-        UI <-->|"Write (optimistic)"| YJS
-        YJS <-->|"Persist locally"| SQLITE
+        UI <--> TSQ
+        UI <-->YJS
+        YJS <-->SQLITE
     end
 
     subgraph "Convex Backend"
@@ -1138,14 +1137,14 @@ flowchart TB
         MAT[(Materialized View<br/>JSON documents)]
         PEERS[(Peer Tracking<br/>sync cursors)]
         
-        COMP -->|"1. Append delta"| LOG
-        COMP -->|"2. Materialize"| MAT
-        COMP -->|"3. Track progress"| PEERS
+        COMP -->LOG
+        COMP -->MAT
+        COMP -->PEERS
     end
 
-    YJS -->|"sync(delta, cursor)"| COMP
-    COMP -->|"subscription"| TSQ
-    COMP -->|"mark(peerId, seq)"| PEERS
+    YJS -->COMP
+    COMP -->TSQ
+    COMP -->PEERS
 ```
 
 ### The Dual-Storage Pattern (CQRS)
@@ -1204,7 +1203,7 @@ sequenceDiagram
 When a client has been offline and reconnects with divergent changes:
 
 ```mermaid
-flowchart TD
+flowchart LR
     RECONNECT[Client Reconnects]
     CHECK{Check peer status}
     
