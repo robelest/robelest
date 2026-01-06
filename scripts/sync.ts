@@ -79,6 +79,54 @@ function hashContent(content: string): string {
 	return createHash("md5").update(content).digest("hex").slice(0, 12);
 }
 
+function sanitizeFrontmatter(rawContent: string): string {
+	const frontmatterMatch = rawContent.match(/^---\n([\s\S]*?)\n---/);
+	if (!frontmatterMatch) return rawContent;
+
+	const frontmatterBody = frontmatterMatch[1];
+	const restOfContent = rawContent.slice(frontmatterMatch[0].length);
+
+	const isAlreadyValid = (v: string) =>
+		!v ||
+		/^["'].*["']$/.test(v) ||
+		/^-?\d+(\.\d+)?$/.test(v) ||
+		/^(true|false|null|~)$/i.test(v) ||
+		/^\d{4}-\d{2}-\d{2}/.test(v) ||
+		/^[\[\{]/.test(v);
+
+	// Regex: YAML special chars, em/en dashes, smart quotes, emojis
+	const needsQuoting = (v: string) =>
+		/[:\{\}\[\],&*#?|\-<>=!%@`]/.test(v) ||
+		/[\u2014\u2013\u2018\u2019\u201c\u201d]/.test(v) ||
+		/[\u{1F300}-\u{1F9FF}]/u.test(v) ||
+		v.startsWith(" ") ||
+		v.endsWith(" ");
+
+	const sanitizedLines = frontmatterBody.split("\n").map((line) => {
+		const trimmed = line.trim();
+		if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("-") || !line.includes(":")) {
+			return line;
+		}
+
+		const match = line.match(/^(\s*)([a-zA-Z_][a-zA-Z0-9_]*):(.*)$/);
+		if (!match) return line;
+
+		const [, indent, key, rawValue] = match;
+		const value = rawValue.trim();
+
+		if (isAlreadyValid(value)) return line;
+
+		if (needsQuoting(value)) {
+			const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+			return `${indent}${key}: "${escaped}"`;
+		}
+
+		return line;
+	});
+
+	return `---\n${sanitizedLines.join("\n")}\n---${restOfContent}`;
+}
+
 function extractMermaidBlocks(markdown: string): { 
 	processedMarkdown: string; 
 	blocks: MermaidBlock[] 
@@ -515,7 +563,7 @@ async function main() {
 		const filePath = join(CONTENT_DIR, file);
 		const rawContent = await readFile(filePath, "utf-8");
 
-		const { data, content: markdown } = matter(rawContent);
+		const { data, content: markdown } = matter(sanitizeFrontmatter(rawContent));
 		const frontmatter = data as Frontmatter;
 
 		if (!frontmatter.title) {
