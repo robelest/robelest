@@ -5,8 +5,8 @@ description: How we evolved the API design and build system for Trestle's Convex
 tags:
   - components
   - architecture
-publishDate: 2025-12-26
-published: true
+publishDate: 2025-12-23
+published: false 
 ---
 
 # Component Authoring: The API Design Journey

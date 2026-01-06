@@ -7,7 +7,7 @@ tags:
   - components
   - architecture
 publishDate: 2025-12-17
-published: true
+published: false 
 ---
 
 # Abstract

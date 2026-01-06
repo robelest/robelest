@@ -1,23 +1,21 @@
 ---
 title: "Building Replicate"
 slug: replicate-local-first
-description: The full, unvarnished story of building an offline-first sync engine for Convex—from RxDB experiments to Yjs CRDTs, the Loro exploration, and the cursor problem that nearly broke everything.
+description: The full, unvarnished story of building an offline-first sync engine for Convex—from RxDB experiments to Yjs CRDTs, the Loro exploration, and the cursor problem that nearly broke everything. (notice ⚠️: this paper was composed with the usage of LLMs, I'm lazy)
 tags:
   - convex
   - components
   - local-first
-publishDate: 2025-12-25
+publishDate: 2025-12-26
 published: true
 ---
 
 # An Engineering Post-Mortem
 
+
 **[@Francis](https://x.com/freadbarth) had been spoiled.**
 
-He spent his days inside Linear and Superhuman—software that feels less like a tool and more like an extension of the nervous system. No spinners. No lag. Just buttery, instant state changes. When we started building Ledger, there was one prevailing philosophy  *"It has to feel like an extension of self"*
-
-To Francis's request,  I nodded. I'd written a Go CLI once to sync markdown notes to my VPS. How hard could a real-time sync engine be?
-This of course, was purely ignorance, But with no users yet and a completely green field, we had the rare opportunity to get the architecture right from day one. This is the story of how we built **Replicate**, an offline-first sync engine for Convex. It is a story of failed architectures, fighting against database physics, and learning why "time" in distributed systems is a lie.
+He spent his days inside Linear and Superhuman, software that feels less like a tool and more like an extension of the nervous system. No spinners. No lag. Just buttery, instant state changes. To Francis's request,  I nodded. I'd written a Go CLI once to sync markdown notes to my VPS. How hard could a real-time sync engine be? This of course, was purely ignorance, But with no users yet and a completely green field, we had the rare opportunity to get the architecture right from day one. This is the story of how we built **[Replicate](https://github.com/trestleinc/replicate)** (Currently public alpha (stable beta release in progress)), an offline-first sync engine for Convex. It is a story of failed architectures, fighting against database physics, and learning why "time" in distributed systems is a lie.
 
 ---
 
@@ -490,57 +488,9 @@ flowchart TB
 
 
 
-
-
-## Component Authoring: Reverse Engineering the Future
-
-One surreal aspect of building Replicate was that we shipped v1.0.0 *before* Convex publicly released their component authoring documentation. We were building on a system that didn't officially exist yet.
-
-Our approach was archaeological:
-1. Study the R2 storage component example (one of the few public component implementations)
-2. Cargo-cult `convex.config.ts` patterns that seemed to work
-3. Read the Convex source code when documentation failed us
-4. Ask questions in Discord and pray
-
-The Convex team was incredibly helpful. [@ianmacartney](https://x.com/ianmacartney) answered questions at all hours. But we were still building on shifting ground.
-
-You can now find the official documentation at [docs.convex.dev/components](https://docs.convex.dev/components).
-
-### Build System Evolution
-
-The build tooling journey was its own adventure:
-
-**Phase 1: tsc**
-Simple TypeScript compilation. Worked, but slow. No bundling. Dual ESM/CJS output was painful to configure.
-
-**Phase 2: rslib/rsbuild**
-Fast Rspack-based bundling. Better, but the configuration was complex and we kept hitting edge cases with Convex's module resolution.
-
-**Phase 3: tsdown**
-The winner. Built on esbuild, with sensible defaults and clean DTS (declaration file) bundling.
-
-```javascript
-// tsdown.config.js - the simplicity we needed
-export default {
-  entry: ['src/index.ts', 'src/client.ts', 'src/server.ts'],
-  format: ['esm', 'cjs'],
-  dts: true,
-  clean: true
-};
-```
-
-We also consolidated the package structure. Early versions had a messy monorepo with separate packages for client, server, and shared code. The final version is a unified `@trestleinc/replicate` with clear entry points:
-
-```typescript
-import { replicate } from '@trestleinc/replicate';           // Server
-import { collection } from '@trestleinc/replicate/client';   // Client
-```
-
----
-
 ## The API Evolution: From Boilerplate to Elegance
 
-We went through four major phases of API design, each one getting closer to that "Linear feel" Francis demanded.
+We went through four major phases of API design, each one getting closer to native tanstackdb convex integration.
 
 ### Phase 1: The Automerge Era (Direct Component Calls)
 
@@ -1049,10 +999,7 @@ Without loading the WASM blob (which we were explicitly trying to avoid), the Co
 - Participate in CRDT merge operations
 
 The server became a "dumb store"—it could save and retrieve bytes, but couldn't do anything intelligent with them. This defeated much of the purpose of having a smart backend—and critically, it made compaction nearly impossible to reason about.
-
-**The lesson: context matters more than benchmarks.** Loro might be faster in raw CRDT operations, but Yjs's architecture was a better fit for our server-authoritative component model. Back to Yjs. Back to compaction that actually worked.
-
----
+**The lesson: context matters more than benchmarks.** Loro might be faster in raw CRDT operations, but Yjs's architecture was a better fit for our server-authoritative component model.---
 
 ## React Native: Where Hope Goes to Die
 
