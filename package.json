@@ -7,14 +7,11 @@
 		"dev": "concurrently \"bun:dev:app\" \"bun:dev:convex\"",
 		"dev:app": "vite dev",
 		"dev:convex": "convex dev",
-		"start": "bun ./build/index.js",
-		"build": "svelte-kit sync && vite build",
-		"deploy": "convex deploy --cmd-url-env-var-name PUBLIC_CONVEX_URL --cmd 'vite build'",
+		"build": "vite build",
 		"preview": "vite preview",
-		"prepare": "svelte-kit sync || echo ''",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"sync": "bun run scripts/sync.ts"
+		"sync": "bun run scripts/sync.ts",
+		"sync:prod": "bun run --env-file=.env.production scripts/sync.ts",
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
 	},
 	"devDependencies": {
 		"@internationalized/date": "^3.8.1",
