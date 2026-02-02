@@ -11,7 +11,8 @@
 		"preview": "vite preview",
 		"sync": "bun run scripts/sync.ts",
 		"sync:prod": "bun run --env-file=.env.production scripts/sync.ts",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+		"deploy": "convex deploy --cmd-url-env-var-name PUBLIC_CONVEX_URL --cmd 'vite build'"
 	},
 	"devDependencies": {
 		"@internationalized/date": "^3.8.1",

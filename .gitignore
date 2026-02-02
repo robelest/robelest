@@ -23,5 +23,8 @@ Thumbs.db
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
+# Wrangler
+worker-configuration.d.ts
+
 # Lock files (use package-lock.json only)
 pnpm-lock.yaml
