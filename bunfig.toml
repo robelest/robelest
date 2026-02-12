@@ -1,0 +1,7 @@
+# Bun runtime JSX configuration
+# Sets Hono as the default JSX runtime for all server-side files.
+# Client-side React code is bundled via Bun.build() with its own
+# explicit jsx config, so this doesn't affect it.
+
+jsx = "react-jsx"
+jsxImportSource = "hono/jsx"
