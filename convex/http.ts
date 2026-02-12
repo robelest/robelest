@@ -8,18 +8,11 @@ const http = httpRouter();
 /**
  * Custom static file handler with directory URL resolution.
  *
- * The default `registerStaticRoutes` from @convex-dev/self-hosting only does:
+ * Tries in order:
  *   1. Exact path match
- *   2. SPA fallback (no extension → /index.html)
- *
- * This handler adds multi-page SSG support by trying:
- *   1. Exact path (e.g., /journal.html)
- *   2. /path/index.html (e.g., /journal → /journal/index.html)
- *   3. /path.html (e.g., /journal → /journal.html)
+ *   2. /path/index.html (directory index)
+ *   3. /path.html (flat file)
  *   4. 404
- *
- * This is necessary because Hono's toSSG produces flat files:
- *   /journal → journal.html (not journal/index.html)
  */
 const serveStaticFile = httpAction(async (ctx, request) => {
 	const url = new URL(request.url);
@@ -28,6 +21,11 @@ const serveStaticFile = httpAction(async (ctx, request) => {
 	// Normalize root
 	if (path === "" || path === "/") {
 		path = "/index.html";
+	}
+
+	// Strip trailing slash (e.g., /journal/ → /journal) so resolution works
+	if (path !== "/index.html" && path.endsWith("/")) {
+		path = path.slice(0, -1);
 	}
 
 	// Helper to look up an asset from the self-hosting component

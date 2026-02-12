@@ -2,6 +2,8 @@ node_modules
 
 # Build output
 dist/
+build/
+.svelte-kit/
 
 # OS
 .DS_Store
