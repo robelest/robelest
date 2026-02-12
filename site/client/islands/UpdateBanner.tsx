@@ -1,4 +1,4 @@
-import { createSignal, createEffect, Show } from "solid-js";
+import { createSignal, createMemo, Show, onMount } from "solid-js";
 import { useQuery } from "convex-solidjs";
 import { api } from "../../../convex/_generated/api.js";
 
@@ -8,25 +8,27 @@ export function UpdateBanner() {
 		{},
 	);
 
-	const [initialId, setInitialId] = createSignal<string | null>(null);
 	const [dismissedId, setDismissedId] = createSignal<string | null>(null);
 
-	// Capture the initial deployment ID on first load
-	createEffect(() => {
+	// Capture the deployment ID present when the page first loaded.
+	// Component body runs once in Solid, so this is safe as a plain let.
+	let initialId: string | null = null;
+
+	const updateAvailable = createMemo(() => {
 		const d = deployment.data();
-		if (d && initialId() === null) {
-			setInitialId(d.currentDeploymentId);
+		if (!d) return false;
+
+		// Latch the first deployment we see
+		if (initialId === null) {
+			initialId = d.currentDeploymentId;
+			return false;
 		}
+
+		return (
+			d.currentDeploymentId !== initialId &&
+			d.currentDeploymentId !== dismissedId()
+		);
 	});
-
-	const updateAvailable = () => {
-		const d = deployment.data();
-		const init = initialId();
-		if (!d || init === null) return false;
-		return d.currentDeploymentId !== init && d.currentDeploymentId !== dismissedId();
-	};
-
-	const reload = () => window.location.reload();
 
 	const dismiss = () => {
 		const d = deployment.data();
@@ -35,51 +37,20 @@ export function UpdateBanner() {
 
 	return (
 		<Show when={updateAvailable()}>
-			<div
-				style={{
-					position: "fixed",
-					bottom: "1rem",
-					right: "1rem",
-					"background-color": "#1a1a2e",
-					color: "#fff",
-					padding: "1rem 1.5rem",
-					"border-radius": "8px",
-					"box-shadow": "0 4px 12px rgba(0, 0, 0, 0.3)",
-					display: "flex",
-					"align-items": "center",
-					gap: "1rem",
-					"z-index": 9999,
-					"font-family": "system-ui, -apple-system, sans-serif",
-					"font-size": "14px",
-				}}
-			>
-				<span>A new version is available!</span>
+			<div class="fixed bottom-4 right-4 z-50 flex items-center gap-3 rounded border border-th-border bg-th-surface px-4 py-3 text-sm text-th-text shadow-lg">
+				<span style={{ "font-family": "var(--font-display)" }}>
+					A new version is available
+				</span>
 				<button
-					onClick={reload}
-					style={{
-						"background-color": "#4f46e5",
-						color: "#fff",
-						border: "none",
-						padding: "0.5rem 1rem",
-						"border-radius": "4px",
-						cursor: "pointer",
-						"font-weight": 500,
-					}}
+					onClick={() => window.location.reload()}
+					class="rounded bg-th-accent px-3 py-1 text-xs font-medium text-th-base transition-colors hover:bg-th-accent-hover"
 				>
 					Reload
 				</button>
 				<button
 					onClick={dismiss}
 					aria-label="Dismiss"
-					style={{
-						background: "none",
-						border: "none",
-						color: "#888",
-						cursor: "pointer",
-						padding: "0.25rem",
-						"font-size": "18px",
-						"line-height": 1,
-					}}
+					class="text-th-muted transition-colors hover:text-th-text"
 				>
 					&times;
 				</button>

@@ -183,8 +183,8 @@ app.get('/journal', async (c) => {
 					</h1>
 				</header>
 
-				{/* Tag filter island mount + SSR fallback content.
-				    When React mounts via createRoot, it replaces the inner HTML. */}
+				{/* Tag filter island — SSR content renders immediately; the client
+				    replaces it with the interactive Solid island on load. */}
 				<main
 					id="tag-filter"
 					class="flex-1 min-h-0 flex flex-col w-full max-w-3xl mx-auto px-4 sm:px-6"

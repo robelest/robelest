@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, createMemo, For, Show } from "solid-js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -46,17 +46,18 @@ export function TagFilter(props: TagFilterProps) {
 
 	const clearTags = () => setActiveTags(new Set<string>());
 
-	// AND logic: entry must contain ALL selected tags
-	const filtered = () => {
+	// AND logic: entry must contain ALL selected tags.
+	// Memoised so the filter only runs once per tag change, not per access.
+	const filtered = createMemo(() => {
 		const tags = activeTags();
 		if (tags.size === 0) return props.entries;
 		return props.entries.filter((entry) =>
 			[...tags].every((tag) => entry.tags?.includes(tag)),
 		);
-	};
+	});
 
-	const featured = () => filtered()[0] ?? null;
-	const archive = () => filtered().slice(1);
+	const featured = createMemo(() => filtered()[0] ?? null);
+	const archive = createMemo(() => filtered().slice(1));
 
 	return (
 		<>
