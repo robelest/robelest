@@ -2,6 +2,7 @@
 	import '../app.css';
 	import { setupConvex } from 'convex-svelte';
 	import { PUBLIC_CONVEX_URL } from '$env/static/public';
+	import UpdateBanner from '$lib/components/UpdateBanner.svelte';
 
 	setupConvex(PUBLIC_CONVEX_URL);
 
@@ -19,3 +20,5 @@
 <div id="main-content" class="min-h-screen bg-th-base text-th-text">
 	{@render children()}
 </div>
+
+<UpdateBanner />

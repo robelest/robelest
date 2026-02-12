@@ -3,11 +3,7 @@ import type { PageServerLoad } from './$types.js';
 import { PUBLIC_CONVEX_URL } from '$env/static/public';
 import { api } from '../../../convex/_generated/api.js';
 
-export const load = (async ({ setHeaders }) => {
-	setHeaders({
-		'cache-control': 'public, max-age=60, s-maxage=300'
-	});
-
+export const load = (async () => {
 	const client = new ConvexHttpClient(PUBLIC_CONVEX_URL);
 	const journalEntries = await client.query(api.journal.list, { publishedOnly: true });
 
