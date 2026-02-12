@@ -1,48 +1,33 @@
 {
 	"name": "robelest",
 	"private": true,
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"type": "module",
 	"scripts": {
-		"dev": "concurrently \"bun:dev:app\" \"bun:dev:convex\"",
-		"dev:app": "vite dev",
 		"dev:convex": "convex dev",
-		"build": "vite build",
-		"preview": "vite preview",
+		"build": "bun run site/build.ts",
 		"sync": "bun run scripts/sync.ts",
 		"sync:prod": "bun run --env-file=.env.production scripts/sync.ts",
-		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"deploy": "convex deploy --cmd-url-env-var-name PUBLIC_CONVEX_URL --cmd 'vite build'"
+		"deploy": "bun run build && bunx @convex-dev/self-hosting upload --dist ./dist --component staticHosting --prod",
+		"deploy:dev": "bun run build && bunx @convex-dev/self-hosting upload --dist ./dist --component staticHosting",
+		"deploy:convex": "convex deploy"
 	},
 	"devDependencies": {
-		"@internationalized/date": "^3.8.1",
-		"@mermaid-js/mermaid-cli": "^11.12.0",
-		"@sveltejs/adapter-auto": "^6.1.0",
-		"@sveltejs/adapter-cloudflare": "^7.2.4",
-		"@sveltejs/adapter-node": "^5.4.0",
-		"@sveltejs/kit": "^2.43.2",
-		"@sveltejs/vite-plugin-svelte": "^6.2.0",
-		"@tailwindcss/vite": "^4.1.13",
-		"bits-ui": "^2.11.0",
-		"clsx": "^2.1.1",
-		"concurrently": "^9.2.1",
-		"p-limit": "^7.2.0",
-		"svelte": "^5.39.5",
-		"svelte-check": "^4.3.2",
-		"tailwind-merge": "^3.3.1",
-		"tailwind-variants": "^3.2.2",
+		"@types/react": "^19.2.14",
+		"@types/react-dom": "^19.2.3",
+		"bun-types": "^1.3.9",
 		"tailwindcss": "^4.1.13",
-		"tw-animate-css": "^1.4.0",
-		"typescript": "^5.9.2",
-		"vite": "^7.1.7"
+		"typescript": "^5.9.2"
 	},
 	"dependencies": {
-		"@lucide/svelte": "^0.544.0",
+		"@convex-dev/self-hosting": "^0.1.0",
 		"convex": "^1.30.0",
-		"convex-svelte": "^0.0.12",
 		"gray-matter": "^4.0.3",
+		"hono": "^4.11.9",
 		"katex": "^0.16.27",
 		"marked": "^17.0.1",
-		"mermaid": "^11.12.2"
+		"p-limit": "^7.2.0",
+		"react": "^19.2.4",
+		"react-dom": "^19.2.4"
 	}
 }
