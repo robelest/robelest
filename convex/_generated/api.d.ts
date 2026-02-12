@@ -57,7 +57,7 @@ export declare const components: {
         "mutation",
         "internal",
         { currentDeploymentId: string },
-        Array<string>
+        { blobIds: Array<string>; storageIds: Array<string> }
       >;
       generateUploadUrl: FunctionReference<"mutation", "internal", {}, string>;
       getByPath: FunctionReference<
@@ -67,10 +67,11 @@ export declare const components: {
         {
           _creationTime: number;
           _id: string;
+          blobId?: string;
           contentType: string;
           deploymentId: string;
           path: string;
-          storageId: string;
+          storageId?: string;
         } | null
       >;
       getCurrentDeployment: FunctionReference<
@@ -91,22 +92,24 @@ export declare const components: {
         Array<{
           _creationTime: number;
           _id: string;
+          blobId?: string;
           contentType: string;
           deploymentId: string;
           path: string;
-          storageId: string;
+          storageId?: string;
         }>
       >;
       recordAsset: FunctionReference<
         "mutation",
         "internal",
         {
+          blobId?: string;
           contentType: string;
           deploymentId: string;
           path: string;
-          storageId: string;
+          storageId?: string;
         },
-        string | null
+        { oldBlobId: string | null; oldStorageId: string | null }
       >;
       setCurrentDeployment: FunctionReference<
         "mutation",
