@@ -11,8 +11,8 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"sync": "bun run scripts/sync.ts",
 		"sync:prod": "bun run --env-file=.env.production scripts/sync.ts",
-		"deploy": "vite build && bunx @convex-dev/self-hosting upload --dist ./build --component staticHosting --prod",
-		"deploy:dev": "vite build && bunx @convex-dev/self-hosting upload --dist ./build --component staticHosting",
+		"deploy": "bun run sync:prod && vite build && bunx @convex-dev/self-hosting upload --dist ./build --component staticHosting --prod",
+		"deploy:dev": "bun run sync && vite build && bunx @convex-dev/self-hosting upload --dist ./build --component staticHosting",
 		"deploy:convex": "convex deploy"
 	},
 	"devDependencies": {
