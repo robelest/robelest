@@ -1,6 +1,38 @@
 import { toSSG } from "hono/bun";
 import { $ } from "bun";
+import { transform } from "solid-jsx-oxc";
+import type { BunPlugin } from "bun";
 
+// ---------------------------------------------------------------------------
+// Bun plugin: compile SolidJS JSX via solid-jsx-oxc (OXC/Rust, no Babel)
+// ---------------------------------------------------------------------------
+function solidPlugin(): BunPlugin {
+  return {
+    name: "solid-jsx-oxc",
+    setup(build) {
+      build.onLoad({ filter: /\.[jt]sx$/ }, async (args) => {
+        // Skip Hono server-side JSX (only transform client code)
+        if (!args.path.includes("/client/")) return;
+        const source = await Bun.file(args.path).text();
+        const result = transform(source, {
+          filename: args.path,
+          moduleName: "solid-js/web",
+          generate: "dom",
+          delegateEvents: true,
+          wrapConditionals: true,
+          contextToCustomElements: true,
+        });
+        // solid-jsx-oxc only transforms JSX → SolidJS calls but preserves
+        // TypeScript syntax. Use "ts" loader so Bun strips type annotations.
+        return { contents: result.code, loader: "ts" };
+      });
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Build pipeline
+// ---------------------------------------------------------------------------
 async function build() {
   const startTime = performance.now();
   console.log("Building site...\n");
@@ -23,8 +55,8 @@ async function build() {
   console.log("2. Compiling Tailwind CSS...");
   await $`bunx @tailwindcss/cli -i ./site/styles.css -o ./dist/styles.css --minify`;
 
-  // Step 3: Bundle React client for the browser
-  console.log("3. Bundling React client...");
+  // Step 3: Bundle SolidJS client for the browser
+  console.log("3. Bundling SolidJS client...");
   const clientBuild = await Bun.build({
     entrypoints: ["./site/client/app.tsx"],
     outdir: "./dist",
@@ -36,10 +68,7 @@ async function build() {
       entry: "client.[ext]",
       chunk: "chunks/[name]-[hash].[ext]",
     },
-    jsx: {
-      runtime: "automatic",
-      importSource: "react",
-    },
+    plugins: [solidPlugin()],
     throw: false,
   });
 

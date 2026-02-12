@@ -60,7 +60,7 @@ export default function Layout({
 					{children}
 				</div>
 
-				<div id="react-root"></div>
+				<div id="island-root"></div>
 				<script type="module" src="/client.js"></script>
 			</body>
 		</html>

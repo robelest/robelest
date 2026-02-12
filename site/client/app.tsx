@@ -1,8 +1,6 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import { ConvexReactClient, ConvexProvider } from "convex/react";
-import { UpdateBanner } from "@convex-dev/self-hosting/react";
-import { api } from "../../convex/_generated/api.js";
+import { render } from "solid-js/web";
+import { setupConvex, ConvexProvider } from "convex-solidjs";
+import { UpdateBanner } from "./islands/UpdateBanner.js";
 
 /**
  * Resolve the Convex deployment URL.
@@ -27,19 +25,17 @@ async function resolveConvexUrl(): Promise<string | null> {
 async function main() {
 	const convexUrl = await resolveConvexUrl();
 
-	// Mount UpdateBanner into #react-root when we have a Convex connection
-	const reactRoot = document.getElementById("react-root");
-	if (reactRoot && convexUrl) {
-		const convex = new ConvexReactClient(convexUrl);
-		const root = ReactDOM.createRoot(reactRoot);
-		root.render(
-			<ConvexProvider client={convex}>
-				<UpdateBanner
-					getCurrentDeployment={
-						(api as any).staticHosting.getCurrentDeployment
-					}
-				/>
-			</ConvexProvider>,
+	// Mount UpdateBanner into #island-root when we have a Convex connection
+	const islandRoot = document.getElementById("island-root");
+	if (islandRoot && convexUrl) {
+		const client = setupConvex(convexUrl);
+		render(
+			() => (
+				<ConvexProvider client={client}>
+					<UpdateBanner />
+				</ConvexProvider>
+			),
+			islandRoot,
 		);
 	}
 
@@ -53,8 +49,10 @@ async function main() {
 		const tags: string[] = JSON.parse(tagsJson || "[]");
 		const entries = JSON.parse(entriesJson || "[]");
 
-		const root = ReactDOM.createRoot(tagFilterEl);
-		root.render(<TagFilter allTags={tags} entries={entries} />);
+		render(
+			() => <TagFilter allTags={tags} entries={entries} />,
+			tagFilterEl,
+		);
 	}
 }
 

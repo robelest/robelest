@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import { createSignal, For, Show } from "solid-js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -19,20 +19,18 @@ interface TagFilterProps {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Convert "YYYY-MM-DD" → "MM-DD-YYYY" */
+/** Convert "YYYY-MM-DD" to "MM-DD-YYYY" */
 function formatDate(d: string): string {
 	const [year, month, day] = d.split("-");
 	return `${month}-${day}-${year}`;
 }
 
-const displayFont: React.CSSProperties = {
-	fontFamily: "var(--font-display)",
-};
+const displayFont = { "font-family": "var(--font-display)" };
 
 // ── Component ───────────────────────────────────────────────────────────────
 
-export function TagFilter({ allTags, entries }: TagFilterProps) {
-	const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
+export function TagFilter(props: TagFilterProps) {
+	const [activeTags, setActiveTags] = createSignal<Set<string>>(new Set());
 
 	const toggleTag = (tag: string) => {
 		setActiveTags((prev) => {
@@ -46,119 +44,128 @@ export function TagFilter({ allTags, entries }: TagFilterProps) {
 		});
 	};
 
-	const clearTags = () => setActiveTags(new Set());
+	const clearTags = () => setActiveTags(new Set<string>());
 
 	// AND logic: entry must contain ALL selected tags
-	const filtered = useMemo(() => {
-		if (activeTags.size === 0) return entries;
-		return entries.filter((entry) =>
-			[...activeTags].every((tag) => entry.tags?.includes(tag)),
+	const filtered = () => {
+		const tags = activeTags();
+		if (tags.size === 0) return props.entries;
+		return props.entries.filter((entry) =>
+			[...tags].every((tag) => entry.tags?.includes(tag)),
 		);
-	}, [entries, activeTags]);
+	};
 
-	const featured = filtered[0] ?? null;
-	const archive = filtered.slice(1);
+	const featured = () => filtered()[0] ?? null;
+	const archive = () => filtered().slice(1);
 
 	return (
 		<>
 			{/* Tag chips */}
-			<div className="flex flex-wrap gap-2 mb-8">
+			<div class="flex flex-wrap gap-2 mb-8">
 				<button
 					type="button"
-					className={`tag-chip${activeTags.size === 0 ? " active" : ""}`}
+					class={`tag-chip${activeTags().size === 0 ? " active" : ""}`}
 					onClick={clearTags}
 				>
 					All
 				</button>
-				{allTags.map((tag) => (
-					<button
-						type="button"
-						key={tag}
-						className={`tag-chip${activeTags.has(tag) ? " active" : ""}`}
-						onClick={() => toggleTag(tag)}
-					>
-						{tag}
-					</button>
-				))}
+				<For each={props.allTags}>
+					{(tag) => (
+						<button
+							type="button"
+							class={`tag-chip${activeTags().has(tag) ? " active" : ""}`}
+							onClick={() => toggleTag(tag)}
+						>
+							{tag}
+						</button>
+					)}
+				</For>
 			</div>
 
 			{/* Filtered entries */}
-			{filtered.length === 0 ? (
-				<p className="text-th-muted text-sm py-8">
-					No entries match the selected tags.
-				</p>
-			) : (
-				<>
-					{/* Featured / Latest entry */}
-					{featured && (
-						<article className="border-b border-th-border pb-8 mb-8">
+			<Show
+				when={filtered().length > 0}
+				fallback={
+					<p class="text-th-muted text-sm py-8">
+						No entries match the selected tags.
+					</p>
+				}
+			>
+				{/* Featured / Latest entry */}
+				<Show when={featured()}>
+					{(entry) => (
+						<article class="border-b border-th-border pb-8 mb-8">
 							<span
-								className="text-[0.625rem] uppercase tracking-[0.1em] text-th-muted"
+								class="text-[0.625rem] uppercase tracking-[0.1em] text-th-muted"
 								style={displayFont}
 							>
 								Latest
 							</span>
-							<h2 className="text-2xl mt-2 mb-3" style={displayFont}>
+							<h2 class="text-2xl mt-2 mb-3" style={displayFont}>
 								<a
-									href={`/journal/${featured.slug}`}
-									className="text-th-text hover:text-th-accent transition-colors"
+									href={`/journal/${entry().slug}`}
+									class="text-th-text hover:text-th-accent transition-colors"
 								>
-									{featured.title}
+									{entry().title}
 								</a>
 							</h2>
 							<time
-								className="text-xs text-th-muted tracking-wide"
-								dateTime={featured.publishDate}
+								class="text-xs text-th-muted tracking-wide"
+								dateTime={entry().publishDate}
 							>
-								{formatDate(featured.publishDate)}
+								{formatDate(entry().publishDate)}
 							</time>
-							{featured.description && (
-								<p className="text-sm text-th-subtle mt-3 leading-relaxed max-w-2xl">
-									{featured.description}
-								</p>
-							)}
+							<Show when={entry().description}>
+								{(desc) => (
+									<p class="text-sm text-th-subtle mt-3 leading-relaxed max-w-2xl">
+										{desc()}
+									</p>
+								)}
+							</Show>
 						</article>
 					)}
+				</Show>
 
-					{/* Archive list */}
-					{archive.length > 0 && (
-						<section>
-							<h2
-								className="text-[0.625rem] uppercase tracking-[0.1em] text-th-muted mb-4"
-								style={displayFont}
-							>
-								Archive
-							</h2>
-							<ul className="divide-y divide-th-border">
-								{archive.map((entry) => (
-									<li key={entry.slug}>
+				{/* Archive list */}
+				<Show when={archive().length > 0}>
+					<section>
+						<h2
+							class="text-[0.625rem] uppercase tracking-[0.1em] text-th-muted mb-4"
+							style={displayFont}
+						>
+							Archive
+						</h2>
+						<ul class="divide-y divide-th-border">
+							<For each={archive()}>
+								{(entry) => (
+									<li>
 										<a
 											href={`/journal/${entry.slug}`}
-											className="flex items-baseline justify-between py-3 group text-th-text hover:text-th-accent transition-colors"
+											class="flex items-baseline justify-between py-3 group text-th-text hover:text-th-accent transition-colors"
 										>
 											<time
-												className="text-xs text-th-muted w-24 shrink-0 tabular-nums"
+												class="text-xs text-th-muted w-24 shrink-0 tabular-nums"
 												dateTime={entry.publishDate}
 											>
 												{formatDate(entry.publishDate)}
 											</time>
 											<h3
-												className="text-sm flex-1 group-hover:text-th-accent transition-colors"
+												class="text-sm flex-1 group-hover:text-th-accent transition-colors"
 												style={displayFont}
 											>
 												{entry.title}
 											</h3>
-											<span className="text-th-muted text-xs ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
-												→
+											<span class="text-th-muted text-xs ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+												&rarr;
 											</span>
 										</a>
 									</li>
-								))}
-							</ul>
-						</section>
-					)}
-				</>
-			)}
+								)}
+							</For>
+						</ul>
+					</section>
+				</Show>
+			</Show>
 		</>
 	);
 }
