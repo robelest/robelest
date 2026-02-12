@@ -1,13 +1,7 @@
 node_modules
 
-# Output
-.output
-.vercel
-.netlify
-.wrangler
-/.svelte-kit
-/build
-/.build
+# Build output
+dist/
 
 # OS
 .DS_Store
@@ -19,12 +13,6 @@ Thumbs.db
 !.env.example
 !.env.test
 
-# Vite
-vite.config.js.timestamp-*
-vite.config.ts.timestamp-*
-
-# Wrangler
-worker-configuration.d.ts
-
-# Lock files (use package-lock.json only)
+# Lock files (bun.lock is committed)
 pnpm-lock.yaml
+package-lock.json
