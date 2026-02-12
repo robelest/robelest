@@ -9,7 +9,10 @@ const config = {
 			pages: 'build',
 			assets: 'build',
 			fallback: undefined,
-		})
+		}),
+		prerender: {
+			handleUnseenRoutes: 'ignore'
+		}
 	}
 };
 

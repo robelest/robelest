@@ -72,6 +72,12 @@ const serveStaticFile = httpAction(async (ctx, request) => {
 	}
 
 	// Serve from Convex storage
+	if (!asset.storageId) {
+		return new Response("Storage error", {
+			status: 500,
+			headers: { "Content-Type": "text/plain" },
+		});
+	}
 	const blob = await ctx.storage.get(asset.storageId);
 	if (!blob) {
 		return new Response("Storage error", {
